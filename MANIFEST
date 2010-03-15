@@ -1,0 +1,7 @@
+Changes
+lib/File/ANVL.pm
+Makefile.PL
+MANIFEST
+README
+t/anvltest.t
+VERSION
