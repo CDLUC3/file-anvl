@@ -1,0 +1,268 @@
+#!/usr/bin/perl
+
+use 5.006;
+use strict;
+use warnings;
+
+my $VERSION = $File::ANVL::VERSION;
+
+use File::ANVL;
+use File::OM;
+
+use Pod::Usage;
+# this :config allows -h24w80 for '‐h 24 ‐w 80', -vax for --vax or --Vax
+use Getopt::Long qw(:config bundling_override);
+
+my %opt = (
+	comments	=> 0,
+	format		=> 0,
+	help		=> 0,
+	listformats	=> 0,
+	man		=> 0,
+	predns		=> 0,
+	subjelpat	=> 0,
+	version		=> 0,
+	verbose		=> 0,
+);
+
+# main
+{
+	GetOptions(\%opt,
+		'comments',
+		'format|m=s',
+		'help|h|?',
+		'listformats',
+		'man',
+		'predns=s',
+		'subjelpat=s',
+		'version',
+		'verbose|v',
+	)
+			or  pod2usage(-exitstatus => 2, -verbose => 1);
+
+	$opt{help}	and pod2usage(-exitstatus => 0, -verbose => 1);
+	$opt{man}	and pod2usage(-exitstatus => 0, -verbose => 2);
+	$opt{version}	and print("$VERSION\n"), exit 0;
+	$opt{listformats} and
+		print(join("\n", File::OM::listformats()), "\n"),
+		exit 0;
+
+	my $format = lc $opt{format} || 'anvl';	# given format name
+	# output formats to do: anvlr, granvl, yaml, short erc/anvl
+	# XXX need a default command?  anvl_summarize?
+
+	my $anvl_opt = File::ANVL::anvl_opt_defaults();	# ref to hash
+	$$anvl_opt{comments} = $opt{comments};	# whether to keep comments
+	$$anvl_opt{verbose} = $opt{verbose};	# more output
+
+	# While anvl_opt and om_opt share some keys, they're used differently.
+
+	my %om_opt = (
+		outhandle	=> *STDOUT,
+		comments	=> $opt{comments},
+		verbose		=> $opt{verbose},
+	);
+	$opt{predns} and			# predicate namespace
+		$om_opt{turtle_predns} = $opt{predns};
+	$opt{subjelpat} and			# subject element name pattern
+		$om_opt{turtle_subjelpat} = $opt{subjelpat};
+
+	my $om = File::OM->new($format, \%om_opt) or
+		pod2usage("$0: unknown format: $format");
+
+	my $st = File::ANVL::anvl_om($om, $anvl_opt);
+	$st ne 1		and die "anvl: $st";
+	#
+	# If 'outhandle' had been set to '', we would expect $st to contain
+	# the complete output string built up by anvl_om.
+
+	exit 0;
+}
+
+__END__
+
+=for roff
+.nr PS 12p
+.nr VS 14.4p
+
+=head1 NAME
+
+anvl - commands to convert and manipulate ANVL records
+
+=head1 SYNOPSIS
+
+=over
+
+=item B<anvl> [B<--format xml>] [B<--comments>] [I<file> ...]
+
+=item B<anvl> [B<--format turtle>] [B<--comments>] [B<--predns> I<namespace>] [B<--subjelpat> I<pattern>] [I<file> ...]
+
+=item B<anvl> [B<--format json>] [I<file> ...]
+
+=item B<anvl> [B<--format plain>] [I<file> ...]
+
+=back
+
+=head1 DESCRIPTION
+
+The B<anvl> utility converts ANVL records to a variety of formats.  An
+ANVL (A Name Value Language) record is a text-based sequence of elements
+ending in a blank line, where each element consists of a label, colon,
+and value and long values may be continued on subsequent indented lines.
+
+This utility reads one or more I<file> arguments (or the standard input
+if none) and writes on the standard output.  The current version assumes
+input to be a stream of ANVL records.  More information is given in the
+OPTIONS section.
+
+=head1 EXAMPLES
+
+The special label "erc" in front of a short form ERC (Electronic Resource
+Citation) record is recognized and the record is converted to long form
+before other processing is done.
+
+   $ echo 'erc: a | b | c | d' | anvl --format json
+   [
+     {
+       "erc": "",
+       "who": "a",
+       "what": "b",
+       "when": "c",
+       "where": "d"
+     }
+   ]
+
+Comments may be passed through to any output format that supports them.
+
+   $ echo '# A source of kernel knowledge.
+   > erc: Kunze, John A. | A Metadata Kernel for Electronic Permanence
+   >      | 20011106 | http://journals.tdl.org/jodi/article/view/43
+   > ' > myfile
+   $ anvl --comments -m turtle myfile
+   @prefix erc: <http://purl.org/kernel/elements/1.1/> .
+   <http://journals.tdl.org/jodi/article/view/43>
+   # A way to kernel knowledge.
+
+       erc:erc """""" ;
+       erc:who """Kunze, John A.""" ;
+       erc:what """A Metadata Kernel for Electronic Permanence""" ;
+       erc:when """20011106""" ;
+       erc:where """http://journals.tdl.org/jodi/article/view/43""" .
+
+The default conversion target is to the ANVL format, which does little
+except to expand short form ERCs and regularize some of the whitespace.
+
+   $ anvl myfile
+   erc:
+   who: Kunze, John A.
+   what: A Metadata Kernel for Electronic Permanence
+   when: 20011106
+   where: http://journals.tdl.org/jodi/article/view/43
+
+The verbose option can cause extra information to be output.
+
+   $ echo 'a: b
+   > #note to self
+   > c: d' | anvl --verbose --comments -m xml
+   <recs>
+     <rec>   <!-- from record 1, line 1 -->
+       <a>b</a>
+       <!-- #note to self -->
+       <c>d</c>
+     </rec>
+   </recs>
+
+That XML conversion output can be converted back to the ANVL record,
+
+   erc:
+   a: b
+   c: d
+
+with this style sheet
+
+   <xsl:template match="/">
+   <xsl:for-each select="recs/rec">
+   erc:
+   <xsl:for-each select="*">
+   <xsl:value-of select="local-name(.)"/>: <xsl:value-of select="."/>
+   <xsl:text>
+   </xsl:text>
+   </xsl:for-each>
+   </xsl:for-each>
+   </xsl:template>
+
+=head1 OPTIONS
+
+=over
+
+=item B<--comments>
+
+Preserve comments during B<--format> conversion, target format permitting.
+
+=item B<-m> I<format>, B<--format> I<format>
+
+Convert to the given I<format>, currently one of "ANVL" (default), "XML",
+"Turtle", "JSON", or "plain".  When converting to the JSON or plain
+formats comments are not preserved.
+
+=item B<-h>, B<--help>
+
+Print extended help documentation.
+
+=item B<--listformats>
+
+Print known conversion formats.
+
+=item B<--man>
+
+Print full documentation.
+
+=item B<--predns> I<namespace>
+
+For Turtle conversion, use the given I<namespace> for assertion Predicates,
+by default, "http://purl.org/kernel/elements/1.1/".
+
+=item B<--subjelpat> I<pattern>
+
+For Turtle conversion, use the given I<pattern> as a regular expression to
+match the first instance of an ANVL element name in each input record,
+the corresponding value of which will become the Subject of Turtle
+assertions about the containing record.  By default, the first element
+matching "^identifier$" or "^subject$" is used, unless the record appears
+to be an ERC (Electronic Resource Citation), in which case the first
+element matching "^where$" is used.  Failing all else, the first
+non-empty element will be used.
+
+=item B<-v>, B<--verbose>
+
+Show more information, such as record numbers in output comments.
+
+=item B<--version>
+
+Print the current version number and exit.
+
+=back
+
+=head1 SEE ALSO
+
+A Name Value Language (ANVL)
+	L<http://www.cdlib.org/inside/diglib/ark/anvlspec.pdf>
+
+A Metadata Kernel for Electronic Permanence (pdf)
+	L<http://journals.tdl.org/jodi/article/view/43>
+
+=head1 AUTHOR
+
+John Kunze I<jak at ucop dot edu>
+
+=head1 COPYRIGHT
+
+Copyright 2009-2010 UC Regents.  Open source BSD license.
+
+=begin CPAN
+
+=head1 README
+
+=head1 SCRIPT CATEGORIES
+
+=end CPAN

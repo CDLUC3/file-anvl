@@ -1,0 +1,144 @@
+ANVL(1)               User Contributed Perl Documentation              ANVL(1)
+
+
+
+NNAAMMEE
+       anvl - commands to convert and manipulate ANVL records
+
+SSYYNNOOPPSSIISS
+       aannvvll [----ffoorrmmaatt xxmmll] [----ccoommmmeennttss] [_f_i_l_e ...]
+       aannvvll [----ffoorrmmaatt ttuurrttllee] [----ccoommmmeennttss] [----pprreeddnnss _n_a_m_e_s_p_a_c_e] [----ssuubbjjeellppaatt
+       _p_a_t_t_e_r_n] [_f_i_l_e ...]
+       aannvvll [----ffoorrmmaatt jjssoonn] [_f_i_l_e ...]
+       aannvvll [----ffoorrmmaatt ppllaaiinn] [_f_i_l_e ...]
+
+DDEESSCCRRIIPPTTIIOONN
+       The aannvvll utility converts ANVL records to a variety of formats.  An
+       ANVL (A Name Value Language) record is a text-based sequence of
+       elements ending in a blank line, where each element consists of a
+       label, colon, and value and long values may be continued on subsequent
+       indented lines.
+
+       This utility reads one or more _f_i_l_e arguments (or the standard input if
+       none) and writes on the standard output.  The current version assumes
+       input to be a stream of ANVL records.  More information is given in the
+       OPTIONS section.
+
+EEXXAAMMPPLLEESS
+       The special label "erc" in front of a short form ERC (Electronic
+       Resource Citation) record is recognized and the record is converted to
+       long form before other processing is done.
+
+          $ echo 'erc: a | b | c | d' | anvl --format json
+          [
+            {
+              "erc": "",
+              "who": "a",
+              "what": "b",
+              "when": "c",
+              "where": "d"
+            }
+          ]
+
+       Comments may be passed through to any output format that supports them.
+
+          $ echo '# A source of kernel knowledge.
+          > erc: Kunze, John A. | A Metadata Kernel for Electronic Permanence
+          >      | 20011106 | http://journals.tdl.org/jodi/article/view/43
+          > ' | anvl --comments -m turtle`
+          @prefix erc: <http://purl.org/kernel/elements/1.1/> .
+          <http://journals.tdl.org/jodi/article/view/43>
+          # A way to kernel knowledge.
+
+              erc:erc """""" ;
+              erc:who """Kunze, John A.""" ;
+              erc:what """A Metadata Kernel for Electronic Permanence""" ;
+              erc:when """20011106""" ;
+              erc:where """http://journals.tdl.org/jodi/article/view/43""" .
+
+       The default conversion is to the XML format.  The verbose option can
+       cause extra information to be output.
+
+          $ echo 'a: b
+          > #note to self
+          > c: d' | anvl --verbose --comments
+          <recs>
+            <rec>   <!-- from record 1, line 1 -->
+              <a>b</a>
+              <!-- #note to self -->
+              <c>d</c>
+            </rec>
+          </recs>
+
+       That XML conversion output can be converted back to the ANVL record,
+
+          erc:
+          a: b
+          c: d
+
+       with this style sheet
+
+          <xsl:template match="/">
+          <xsl:for-each select="recs/rec">
+          erc:
+          <xsl:for-each select="*">
+          <xsl:value-of select="local-name(.)"/>: <xsl:value-of select="."/>
+          <xsl:text>
+          </xsl:text>
+          </xsl:for-each>
+          </xsl:for-each>
+          </xsl:template>
+
+OOPPTTIIOONNSS
+       ----ccoommmmeennttss
+           Preserve comments during ----ffoorrmmaatt conversion, target format
+           permitting.
+
+       --mm _f_o_r_m_a_t, ----ffoorrmmaatt _f_o_r_m_a_t
+           Convert to the given _f_o_r_m_a_t, currently one of "XML" (default),
+           "Turtle", "JSON", or "plain".  When converting to the JSON or plain
+           formats comments are not preserved.
+
+       --hh, ----hheellpp
+           Print extended help documentation.
+
+       ----mmaann
+           Print full documentation.
+
+       ----pprreeddnnss _n_a_m_e_s_p_a_c_e
+           For Turtle conversion, use the given _n_a_m_e_s_p_a_c_e for assertion
+           Predicates, by default, "http://purl.org/kernel/elements/1.1/".
+
+       ----ssuubbjjeellppaatt _p_a_t_t_e_r_n
+           For Turtle conversion, use the given _p_a_t_t_e_r_n as a regular
+           expression to match the first instance of an ANVL element name in
+           each input record, the corresponding value of which will become the
+           Subject of Turtle assertions about the containing record.  By
+           default, the first element matching "^identifier$" or "^subject$"
+           is used, unless the record appears to be an ERC (Electronic
+           Resource Citation), in which case the first element matching
+           "^where$" is used.  Failing all else, the first non-empty element
+           will be used.
+
+       --vv, ----vveerrbboossee
+           Show more information, such as record numbers in output comments.
+
+       ----vveerrssiioonn
+           Print the current version number and exit.
+
+SSEEEE AALLSSOO
+       A Name Value Language (ANVL)
+            <http://www.cdlib.org/inside/diglib/ark/anvlspec.pdf>
+
+       A Metadata Kernel for Electronic Permanence (pdf)
+            <http://journals.tdl.org/jodi/article/view/43>
+
+AAUUTTHHOORR
+       John Kunze _j_a_k _a_t _u_c_o_p _d_o_t _e_d_u
+
+CCOOPPYYRRIIGGHHTT
+       Copyright 2009-2010 UC Regents.  Open source BSD license.
+
+
+
+perl v5.10.0                      2010-02-20                           ANVL(1)

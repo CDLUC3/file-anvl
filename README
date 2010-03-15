@@ -1,18 +1,24 @@
 
-		ANVL MODULE AND COMMAND SCRIPT INSTALLATION INSTRUCTIONS
+	ANVL MODULE AND COMMAND SCRIPT INSTALLATION INSTRUCTIONS
 
 
 ANVL OVERVIEW
-   ...
+
+ANVL (A Name Value Language) is a simple text-based record syntax
+similar to email headers.  An ANVL record is a sequence of elements
+ending in a blank line, where each element consists of a label, colon,
+and value and long values may be continued on subsequent indented lines.
+ANVL is somewhat comparable to the JSON and YAML syntaxes.
+
 
 ANVL INSTALLATION
 
 If not already unpacked, unpack the suite with
 
-   tar xzf ANVL-0.1.tar.gz
+   tar xzf File-ANVL-0.1.tar.gz
 
-after adjusting the version number as needed.  Version 0.1 is known to
-pass build tests on Linux (Ubuntu ??), SunOS ?5.8, and Mac OS X.
+after adjusting the version number as needed.  The current version is
+known to pass build tests on Linux, Solaris, Mac, and Windows systems.
 
 To install the module and script, type the following:
 
@@ -26,30 +32,37 @@ For the "make install" you may have to become the superuser, as in,
    sudo make install
 
 
-COPYRIGHT AND LICENCE
+COPYRIGHT AND LICENSE
 
-Copyright 2009 UC Regents.  BSD-type open source license.
+Copyright (c) 2009-2010, UC Regents
+All rights reserved.
 
-Permission to use, copy, modify, distribute, and sell this software and
-its documentation for any purpose is hereby granted without fee, provided
-that (i) the above copyright notices and this permission notice appear in
-all copies of the software and related documentation, and (ii) the names
-of the UC Regents and the University of California are not used in any
-advertising or publicity relating to the software without the specific,
-prior written permission of the University of California.
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
 
-THE SOFTWARE IS PROVIDED "AS-IS" AND WITHOUT WARRANTY OF ANY KIND, 
-EXPRESS, IMPLIED OR OTHERWISE, INCLUDING WITHOUT LIMITATION, ANY 
-WARRANTY OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.  
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of the University of California nor the names of
+      its contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
-IN NO EVENT SHALL THE UNIVERSITY OF CALIFORNIA BE LIABLE FOR ANY
-SPECIAL, INCIDENTAL, INDIRECT OR CONSEQUENTIAL DAMAGES OF ANY KIND,
-OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
-WHETHER OR NOT ADVISED OF THE POSSIBILITY OF DAMAGE, AND ON ANY
-THEORY OF LIABILITY, ARISING OUT OF OR IN CONNECTION WITH THE USE
-OR PERFORMANCE OF THIS SOFTWARE.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OF THE UNIVERSITY
+OF CALIFORNIA BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 ACKNOWLEDGEMENTS
 
-Thanks to Charles Blair for RDF conversion and discussions.
+Thanks to Charles Blair and Erik Hetzner for RDF conversion advice and to
+the Dublin Core Kernel Application Profile task group.
