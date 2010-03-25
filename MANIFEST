@@ -1,7 +1,13 @@
 Changes
 lib/File/ANVL.pm
+lib/File/OM.pm
 Makefile.PL
 MANIFEST
 README
-t/anvltest.t
+t/anvl.t
+t/code.t
+t/convert.t
+t/om.t
+t/values.t
 VERSION
+xml2anvl.xsl

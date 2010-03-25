@@ -502,7 +502,7 @@ metafile : create_distdir
 	$(NOECHO) $(ECHO) '--- #YAML:1.0' > META_new.yml
 	$(NOECHO) $(ECHO) 'name:                File-ANVL' >> META_new.yml
 	$(NOECHO) $(ECHO) 'version:             0.20' >> META_new.yml
-	$(NOECHO) $(ECHO) 'abstract:            creation and conversion framework for A Name Value Language' >> META_new.yml
+	$(NOECHO) $(ECHO) 'abstract:            routines to support A Name Value Language' >> META_new.yml
 	$(NOECHO) $(ECHO) 'license:             BSD' >> META_new.yml
 	$(NOECHO) $(ECHO) 'author:              ' >> META_new.yml
 	$(NOECHO) $(ECHO) '    - John A. Kunze <jak@ucop.edu>' >> META_new.yml
@@ -782,7 +782,7 @@ testdb_static :: testdb_dynamic
 ppd :
 	$(NOECHO) $(ECHO) '<SOFTPKG NAME="$(DISTNAME)" VERSION="0,20,0,0">' > $(DISTNAME).ppd
 	$(NOECHO) $(ECHO) '    <TITLE>$(DISTNAME)</TITLE>' >> $(DISTNAME).ppd
-	$(NOECHO) $(ECHO) '    <ABSTRACT>creation and conversion framework for A Name Value Language</ABSTRACT>' >> $(DISTNAME).ppd
+	$(NOECHO) $(ECHO) '    <ABSTRACT>routines to support A Name Value Language</ABSTRACT>' >> $(DISTNAME).ppd
 	$(NOECHO) $(ECHO) '    <AUTHOR>John A. Kunze &lt;jak@ucop.edu&gt;</AUTHOR>' >> $(DISTNAME).ppd
 	$(NOECHO) $(ECHO) '    <IMPLEMENTATION>' >> $(DISTNAME).ppd
 	$(NOECHO) $(ECHO) '        <DEPENDENCY NAME="Text-Wrap" VERSION="0,0,0,0" />' >> $(DISTNAME).ppd
