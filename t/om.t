@@ -57,28 +57,85 @@ is $om->elem('foo', 'bar'), 'bar
 $om = File::OM->new("XML", { verbose => 1 });
 is ref($om), 'File::OM::XML', 'made a File::OM::XML object';
 
-is $om->elem('foo', 'bar'), '<foo>bar</foo>
-', 'simple XML element';
+like $om->elem('foo', 'bar'),
+	qr{<recs>.*<rec>.*from record 1, line 1.*<foo>bar</foo>}s,
+	'simple XML element';
 
-like $om->orec(), qr/<rec>.*record 1, line 1/,
+like $om->orec(), qr/<rec>.*record 2, line 1/,
 	'XML verbose record start with defaults for recnum and lineno';
 
 $om = File::OM->new('JSON');
 is ref($om), 'File::OM::JSON', 'made a File::OM::JSON object';
 
-is $om->elem('foo', 'bar'), '
-"foo": "bar"', 'simple JSON element';
+is $om->elem('foo', 'bar'), '[
+  {
+    "foo": "bar"', 'simple JSON element';
 
 $om = File::OM->new('Turtle');
 is ref($om), 'File::OM::Turtle', 'made a File::OM::Turtle object';
 
-is $om->orec('a:b'), '<default>', 'orec for Turtle with default';
+is $om->orec('a:b'), '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
+<default>', 'orec for Turtle with default';
 
 is $om->elem('foo', 'bar'), '
     erc:foo """bar"""', 'simple Turtle element';
 
 $om = new File::OM::ANVL;
 is ref($om), 'File::OM::ANVL', 'made a "new File::OM::ANVL" object';
+
+$om = File::OM::ANVL->new();
+is ref($om), 'File::OM::ANVL',
+	'made a File::OM::ANVL object using subclass constructor';
+
+# xxxxxxxxx this doesn't work but should! (arg1 assumed to be format)
+#$om = File::OM::ANVL->new({wrap=>18});
+
+$om = File::OM->new("anvl", {wrap=>14});
+is $om->elem('erc', ''), 'erc:
+',	'label and empty value';
+
+is $om->elem('ab', 'cd ef gh ij kl mn op'), 'ab: cd ef gh
+	ij kl
+	mn op
+', 'ANVL elem wrap with short lines';
+
+is $om->elem('abracadabra', 'cd ef gh ij kl mn op'),
+	'abracadabra:
+	cd ef
+	gh ij
+	kl mn
+	op
+', 'ANVL wrap with long unbroken label and short lines';
+
+is $om->elem('abracadabra', 'cd ef gh ij kl mn op', '#'),
+	'#cd ef gh ij
+# kl mn op
+',	'ANVL comment wrap';
+
+$om = File::OM->new("plain", {wrap=>14});
+
+is $om->elem('abracadabra', 'cd ef gh ij kl mn op', '#'),
+	'# cd ef gh ij
+# kl mn op
+',	'Plain comment wrap';
+
+$om = File::OM->new("xml", {wrap=>14});
+
+is $om->elem('abracadabra', 'cd ef gh ij kl mn op', '#'), '<recs>
+  <rec>
+    <!-- cd
+    ef gh ij
+    kl mn op -->
+',	'XML comment wrap';
+
+is $om->elem('abracadabra', 'cd ef gh ij kl mn op', ':'),
+'    <abracadabra>cd
+    ef gh ij
+    kl mn op</abracadabra>
+',	'XML element wrap';
+
+
+exit 0;
 
 is $om->elems('a', 'b', 'c', 'd'), "a: b\nc: d\n", 'elems for ANVL';
 
@@ -90,20 +147,117 @@ c: d now is the time for all good men to come to the aid of the party
 ',
 	'bigger elems for ANVL';
 
-$om = File::OM::ANVL->new();
-is ref($om), 'File::OM::ANVL',
-	'made a File::OM::ANVL object using subclass constructor';
+$om = File::OM->new("xml", { wrap => 18 });
+is $om->elems('a', 'b now is the time for all good men to come to the aid of the party and it is still time', 'c', 'd now is the time for all good men to come to the aid of the party and it is still time'), 'xxx', 'wrap 18';
+
+# XXXXX
+#$om = File::OM->new("xml");
+#is $om->elems('a', 'b now is the time for all good men to come to the aid of the party and it is still time', 'c', 'd now is the time for all good men to come to the aid of the party and it is still time'),
+#  '<recs>
+#  <rec>
+#    <a>b now is the time for all good men to come to the aid of
+#	party and it is still time</a>
+#    <c>d now is the time for all good men to come to the aid of the
+#	party and it is still time</c>
+#',
+#	'bigger elems for XML';
+
+$om = File::OM->new("ANVL");
+is $om->elem('ab', 'cd'), 'ab: cd
+',	'ANVL elem auto-invokes open stream and open rec';
+
+my $x = $om->DESTROY();
+is $x, '
+',	'ANVL DESTROY auto-invokes close rec and close stream';
+
+$om = File::OM->new("json");
+is $om->elem('ab', 'cd'), '[
+  {
+    "ab": "cd"', 'JSON elem auto-invokes open stream and open rec';
+
+$x = $om->DESTROY();
+is $x, '
+  }
+]
+',	'JSON DESTROY auto-invokes close rec and close stream';
+
+$om = File::OM->new("Plain");
+is $om->elem('ab', 'cd'), 'cd
+',	'Plain elem auto-invokes open stream and open rec';
+
+$x = $om->DESTROY();
+is $x, '
+',	'Plain DESTROY auto-invokes close rec and close stream';
+
+$om = File::OM->new("Turtle");
+is $om->elem('ab', 'cd'),
+	'@prefix erc: <http://purl.org/kernel/elements/1.1/> .
+<default>
+    erc:ab """cd"""',
+	'Turtle elem auto-invokes open stream and open rec';
+
+$x = $om->DESTROY();
+is $x, ' .
+
+',	'Turtle DESTROY auto-invokes close rec and close stream';
 
 $om = File::OM->new("xml");
-is $om->elems('a', 'b now is the time for all good men to come to the aid of the party and it is still time', 'c', 'd now is the time for all good men to come to the aid of the party and it is still time'),
-  '<a>b now is the time for all good men to come to the aid of the party
-	and it is still time</a>
-<c>d now is the time for all good men to come to the aid of the party
-	and it is still time</c>
-',
-	'bigger elems for XML';
+like $om->elem('ab', 'cd'), qr{<recs>.*<rec>.*<ab>cd</ab>}s,
+	'XML elem auto-invokes open stream and open rec';
 
-#$om = new File::OM::XML({outhandle => *STDERR});
-#is $om->{outhandle}, *STDERR, '"new XML" object with options';
+$x = $om->DESTROY();
+like $x, qr{</rec>.*</recs>}s,
+	'XML DESTROY auto-invokes close rec and close stream';
+
+$x = `perl -Mblib -e 'use File::OM; my \$x = File::OM->new("ANVL", { outhandle => *STDOUT }); \$x->elem("a", "b");'`;
+is $x, 'a: b
+
+',	'ANVL implied DESTROY and STDOUT';
+
+$x = `perl -Mblib -e 'use File::OM; my \$x = File::OM->new("json", { outhandle => *STDOUT }); \$x->elem("a", "b");'`;
+is $x, '[
+  {
+    "a": "b"
+  }
+]
+',	'JSON implied DESTROY and STDOUT';
+
+$x = `perl -Mblib -e 'use File::OM; my \$x = File::OM->new("Plain", { outhandle => *STDOUT }); \$x->elem("a", "b");'`;
+is $x, 'b
+
+',	'Plain implied DESTROY and STDOUT';
+
+$x = `perl -Mblib -e 'use File::OM; my \$x = File::OM->new("Turtle", { outhandle => *STDOUT }); \$x->elem("a", "b");'`;
+is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
+<default>
+    erc:a """b""" .
+
+',	'Turtle implied DESTROY and STDOUT';
+
+$x = `perl -Mblib -e 'use File::OM; my \$x = File::OM->new("xml", { outhandle => *STDOUT }); \$x->elem("a", "b");'`;
+is $x, '<recs>
+  <rec>
+    <a>b</a>
+  </rec>
+</recs>
+',	'XML implied DESTROY and STDOUT';
+
+$om = File::OM::JSON->new();
+$x = $om->elem('a1', 'x');
+$x = $om->elem('a2', 'y');
+$x = $om->elem('a3', 'z');   # 707-765-3960   # 05215176
+is $om->{elemnum}, '3', 'elem tracks element number';
+
+$x = $om->elems('a1', 'b', 'a2', 'c', 'a3', 'd');	# 3 more elems
+is $om->{elemnum}, '6', 'elems tracks element number';
+
+$x = $om->elem('a18', 'e', ':', 18);
+is $om->{elemnum}, '18', 'elem allows reset of element number';
+
+is $om->{recnum}, '1', 'elem(s) tracks recnum 1';
+
+$x = $om->crec();
+$x = $om->orec();
+is $om->{recnum}, '2', 'crec/orec tracks recnum 2';
 
 }

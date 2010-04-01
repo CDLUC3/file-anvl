@@ -78,7 +78,7 @@ like $x, qr{
 <rec>\n\s*
  <a>b</a>\n\s*
  <c>d</c>\n\s*
- <!--\s*\#note.*\s-->\n\s*
+ <!--\s*note.*\s-->\n\s*
 </rec>\n\s*
 }xs, 'anvl2xml conversion with comment';
 
@@ -357,6 +357,38 @@ is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 
 ', 'anvl2turtle with 2 short form ERCs in one oddly formed ERC';
 
+$recstream = 'erc:
+  aa|bb|cc|
+  dd';
+$x = `echo "$recstream" | $cmd --comments -m turtle`;
+is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
+<dd>
+    erc:erc """""" ;
+    erc:who """aa""" ;
+    erc:what """bb""" ;
+    erc:when """cc""" ;
+    erc:where """dd""" .
+
+', 'anvl2turtle with odd short form ERC';
+
+$recstream = 'erc:
+  
+  
+  dd|cc|b|
+   
+  a
+  ';		# there are no empty lines (but lines with spaces)
+$x = `echo "$recstream" | $cmd --comments -m turtle`;
+is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
+<a>
+    erc:erc """""" ;
+    erc:who """dd""" ;
+    erc:what """cc""" ;
+    erc:when """b""" ;
+    erc:where """a""" .
+
+', 'anvl2turtle with strange short form ERC';
+
 $recstream = '# A way to kernel knowledge.
 erc: Kunze, John A. | A Metadata Kernel for Electronic Permanence
      | 20011106 | http://journals.tdl.org/jodi/article/view/43';
@@ -413,7 +445,7 @@ $x = `echo "$recstream" | $cmd --verbose --comments -m xml`;
 is $x, '<recs>
   <rec>   <!-- from record 1, line 1 -->
     <a>b</a>
-    <!-- #note to self -->
+    <!-- note to self -->
     <c>d</c>
   </rec>
 </recs>

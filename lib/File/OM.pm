@@ -1,5 +1,11 @@
 package File::OM;
 
+# xxx bind:
+#     --nofiles = index only, don't save this binding in non-volatile storage
+#     --noindex = don't index, just save this binding in non-volatile storage
+#     default is to do both, returning after saving in non-volatile storage
+#          and before backgrounding indexing step (except if --wait)
+
 use 5.006;
 use strict;
 use warnings;
@@ -33,7 +39,6 @@ sub om_opt_defaults { return {
 	anvl_mode	=>	# which flavor, eg, ANVL, ANVLR, ANVLS
 		'ANVL',		# vanilla (unused for now)
 	elemsref	=> [],	# one array to store record elements
-	indent		=> '',	# current ident
 	indent_start	=> '',	# overall starting indent
 	indent_step	=>	# how much to increment/decrement indent
 		'  ',		# for XML, JSON
@@ -53,7 +58,16 @@ sub om_opt_defaults { return {
 	xml_record_name	=>	# for XML output, record tag
 		'rec',
 	wrap		=> 72,	# at which column to wrap elements (0=nowrap)
+	wrap_indent	=> '',	# current indent for wrap, but "\t" for ANVL
 	verbose		=> 0,	# more output (default less)
+
+	# The following keys are maintained internally.
+	#
+	elemnum		=> 0,	# current element number
+	indent		=> '',	# current ident
+	recnum		=> 0,	# current record number
+	record_is_open	=> 0,	# whether a record is open
+	stream_is_open	=> 0,	# whether a stream is open
 	};
 }
 
@@ -72,9 +86,6 @@ sub new {
 	}
 	bless $self, $class;
 
-	$class ne 'File::OM::ANVL' && $class ne 'File::OM::Plain'
-			&& $class ne 'File::OM::XML'
-		and $self->{wrap} = 0;		# turns off wrapping
 	my $options = shift;
 	my ($key, $value);
 	$self->{$key} = $value
@@ -83,10 +94,22 @@ sub new {
 	return $self;
 }
 
+# xxxx should refactor subclass methodes to more generic SUPER methods
+#      there's lots of repeated code
+
+sub DESTROY {
+	my $self = shift;
+	my ($s, $z) = ('', '');		# built string and catchup string
+	$self->{stream_is_open} and	# wrap up any loose ends
+		$z = $self->cstream();	# which calls crec()
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
 sub elems {
-	# XXXXX allow $indent_string to be set ??
-	# xxxx watch out to make sure label doesn't get wrapped
-	# xxx comment encoding needed for long wrapped comments?
 	# XXX why do 4 bytes (instead of 2) show up in wget??
 	# # %-encode any chars that need it
 	# my $except_re = qr/([\001-\037\177-\377])/; XXX needed any more?
@@ -95,34 +118,15 @@ sub elems {
 	my $self = shift;
 	my $sequence = '';
 	my ($name, $value);
-	if ($self->{wrap} <= 0) {		# if we're not wrapping
-		while (1) {
-			($name, $value) = (shift, shift);	# next arg pair
-			last	unless $name or $value;		# done if null
-			$sequence .= $self->elem($name, $value);
-		}
-		return $sequence;
-	}
-
-	# ?? fold lines longer than $Text::Wrap::columns chars and wrap
-	#  with 1 tab's indention (assume tabwidth=8, line length of 64=72-8
-	#  wrap:  initial tab = "", subsequent tab = "\t"
-	#  append final newline to end the element
-
-	# If we get here, we're wrapping.
-	use Text::Wrap;
-	local ($Text::Wrap::columns, $Text::Wrap::huge) =
-		($self->{wrap}, 'overflow');
 	while (1) {
-		($name, $value) = (shift, shift);	# get next arg pair
-		last	unless $name or $value;		# done if both null
-		$sequence .= Text::Wrap::wrap('',	# wrap lines using
-			"\t",				# tab for indention
-			$self->elem($name, $value)	# element
-			);				# end the element
+		($name, $value) = (shift, shift);	# next arg pair
+		last	unless $name or $value;		# done if null
+		$sequence .= $self->elem($name, $value);
 	}
 	return $sequence;
 }
+
+# xxx To do: make test sets more comprehensive and systemmatic
 
 package File::OM::ANVL;
 
@@ -130,29 +134,54 @@ our @ISA = ('File::OM');
 
 sub elem {	# OM::ANVL
 	my $self = shift;
-	my ($name, $value, $elemnum, $lineno) = (shift, shift, shift, shift);
-	my $s = '';
+	my ($name, $value, $lineno, $elemnum) = (shift, shift, shift, shift);
+	my ($s, $z) = ('', '');		# built string and catchup string
 
-	defined($elemnum)	or $elemnum = 1;
-	defined($lineno)	or $lineno = '1:';
+	$self->{record_is_open} or	# call orec() to open record first
+		($z =  $self->orec(undef, $lineno),	# may call ostream()
+		$self->{record_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+
+	defined($elemnum) and
+		$self->{elemnum} = $elemnum
+	or
+		$self->{elemnum}++;
+
 	# Parse $lineno, which is empty or has form LinenumType, where
 	# Type is either ':' (real element) or '#' (comment).
-	my ($num, $type) =		# don't really need, as no comments
+	defined($lineno)	or $lineno = '1:';
+	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
 
+	use Text::Wrap;		# recommends localizing next two settings
+	local $Text::Wrap::columns = $self->{wrap};
+	local $Text::Wrap::huge = 'overflow';
+
 	if ($type eq '#') {
-		# xxx this should be stacked
 		$self->{element_name} = undef;	# indicates comment
-		$s .= $self->comment_encode($value);
-		# M_ELEMENT and C_ELEMENT would start here
+		$self->{elemnum}--;		# doesn't count as an element
+		$s .= Text::Wrap::wrap(		# wrap lines with '# ' as
+			'#',			# first line "indent" and
+			'# ',			# '# ' for all other indents
+			$self->comment_encode($value)	# main part to wrap
+		);
 		$s .= "\n";			# close comment
 	}
 	else {
+	# XXX would it look cooler with :\t after the label??
+		# xxx this should be stacked
 		$self->{element_name} = $self->name_encode($name);
-		$s .= $self->{element_name} . ':'
-			. $self->value_encode($value);
-		# M_ELEMENT and C_ELEMENT would start here
+		my $enc_val = $self->value_encode($value);	# encoded value
+		$s .= $enc_val =~ /^\s*$/ ?		# wrap() loses label of
+			"$self->{element_name}:$enc_val" :	# blank value
+			Text::Wrap::wrap(		# wrap lines; this 1st
+				$self->{element_name}	# "indent" won't break
+					. ':',		# label across lines
+				"\t",			# tab for other indents
+				$enc_val)		# main part to wrap
+		;
 		$s .= "\n";
+		# M_ELEMENT and C_ELEMENT would start here
 	}
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -163,14 +192,25 @@ sub elem {	# OM::ANVL
 sub orec {	# OM::ANVL
 	my $self = shift;
 	my ($recnum, $lineno) = (shift, shift);
-	my $s = '';
+	my ($s, $z) = ('', '');		# built string and catchup string
 
-	defined($recnum)	or $recnum = 1;
+	$self->{elemnum} = 0;
+	$self->{stream_is_open} or	# call ostream() to open stream first
+		($z = $self->ostream(),
+		$self->{stream_is_open} = 1);
+	$self->{record_is_open} = 1;
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+
+	defined($recnum) and
+		$self->{recnum} = $recnum
+	or
+		$self->{recnum}++;
+
 	defined($lineno)	or $lineno = '1:';
 	# xxxx really? will someone pass that in?
 
 	$self->{verbose} and
-		$s .= "# from record $recnum, line $lineno\n";
+		$s .= "# from record $self->{recnum}, line $lineno\n";
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -179,7 +219,7 @@ sub orec {	# OM::ANVL
 
 sub crec {	# OM::ANVL
 	my ($self, $recnum) = (shift, shift);
-	defined($recnum)	or $recnum = 1;
+	$self->{record_is_open} = 0;
 	my $s = "\n";
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -190,6 +230,9 @@ sub crec {	# OM::ANVL
 # xxx anvl -m anvln? n=normalized?
 sub ostream {	# OM::ANVL
 	my $self = shift;
+
+	$self->{recnum} = 0;
+	$self->{stream_is_open} = 1;
 	# xxx preamble goes here, from other args?
 	my $s = '';
 	$self->{outhandle} and
@@ -200,7 +243,11 @@ sub ostream {	# OM::ANVL
 
 sub cstream {	# OM::ANVL
 	my $self = shift;
-	my $s = '';
+	my ($s, $z) = ('', '');		# built string and catchup string
+	$self->{record_is_open} and	# wrap up any loose ends
+		$z = $self->crec();
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{stream_is_open} = 0;
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -258,7 +305,7 @@ sub value_encode {	# OM::ANVL
 sub comment_encode {	# OM::ANVL
 	my ($self, $s) = (shift, shift);
 	$s	or return '';
-	$s =~ s/\n/\\n/g;			# escape \n
+	$s =~ s/\n/\\n/g;			# escape \n  yyy??
 	return $s;
 }
 
@@ -268,19 +315,29 @@ our @ISA = ('File::OM');
 
 sub elem {	# OM::JSON
 	my $self = shift;
-	my ($name, $value, $elemnum, $lineno) = (shift, shift, shift, shift);
-	my $s = '';
+	my ($name, $value, $lineno, $elemnum) = (shift, shift, shift, shift);
+	my ($s, $z) = ('', '');		# built string and catchup string
 
-	defined($elemnum)	or $elemnum = 1;
-	defined($lineno)	or $lineno = '1:';
+	$self->{record_is_open} or	# call orec() to open record first
+		($z = $self->orec(undef, $lineno),	# may call ostream()
+		$self->{record_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+
+	defined($elemnum) and
+		$self->{elemnum} = $elemnum
+	or
+		$self->{elemnum}++;
+
 	# Parse $lineno, which is empty or has form LinenumType, where
 	# Type is either ':' (real element) or '#' (comment).
+	defined($lineno)	or $lineno = '1:';
 	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
 
 	$type eq '#'		and $name = '#';	# JSON pseudo-comment!
+	$type eq '#'	and $self->{elemnum}--;		# doesn't count as elem
 	$self->{element_name} = $self->name_encode($name);
-	$elemnum > 1 || $self->{verbose} and	# either real element
+	$self->{elemnum} > 1 || $self->{verbose} and	# either real element
 		$s .= ',';	# or pseudo-comment element was used
 	$s .= "\n" . $self->{indent};
 	$s .= '"' . $self->{element_name} . '": "'
@@ -294,16 +351,27 @@ sub elem {	# OM::JSON
 sub orec {	# OM::JSON
 	my $self = shift;
 	my ($recnum, $lineno) = (shift, shift);
-	my $s = '';
+	my ($s, $z) = ('', '');		# built string and catchup string
 
-	defined($recnum)	or $recnum = 1;
+	$self->{elemnum} = 0;
+	$self->{stream_is_open} or	# call ostream() to open stream first
+		($z = $self->ostream(),
+		$self->{stream_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{record_is_open} = 1;
+
+	defined($recnum) and
+		$self->{recnum} = $recnum
+	or
+		$self->{recnum}++;
+
 	defined($lineno)	or $lineno = '1:';
-	# xxxx really? will someone pass that in?
+	# yyy really? will someone pass that in?
 
-	$recnum > 1		and $s .= ',';
+	$self->{recnum} > 1		and $s .= ',';
 	$s .= "\n" . $self->{indent} . '{';		# use indent and
 	$self->{verbose} and
-		$s .= qq@ "#": "from record $recnum, line $lineno"@;
+		$s .= qq@ "#": "from record $self->{recnum}, line $lineno"@;
 	$self->{indent} =~ s/$/$self->{indent_step}/;	# increase indent
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -313,7 +381,7 @@ sub orec {	# OM::JSON
 
 sub crec {	# OM::JSON
 	my ($self, $recnum) = (shift, shift);
-	defined($recnum)	or $recnum = 1;
+	$self->{record_is_open} = 0;
 	$self->{indent} =~ s/$self->{indent_step}$//;	# decrease indent
 	my $s = "\n" . $self->{indent} . '}';		# and use indent
 	$self->{outhandle} and
@@ -324,8 +392,10 @@ sub crec {	# OM::JSON
 
 sub ostream {	# OM::JSON
 	my $self = shift;
-	$self->{indent_step} ||= '  ';		# standard indent width
 
+	$self->{recnum} = 0;
+	$self->{stream_is_open} = 1;
+	$self->{indent_step} ||= '  ';		# standard indent width
 	$self->{indent} = $self->{indent_step};		# current indent width
 	my $s = '[';
 	$self->{outhandle} and
@@ -336,8 +406,13 @@ sub ostream {	# OM::JSON
 
 sub cstream {	# OM::JSON
 	my $self = shift;
+	my ($s, $z) = ('', '');		# built string and catchup string
+	$self->{record_is_open} and	# wrap up any loose ends
+		$z = $self->crec();
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{stream_is_open} = 0;
 	$self->{indent} =~ s/$self->{indent_step}$//;	# decrease indent
-	my $s = "\n]\n";
+	$s .= "\n]\n";
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -372,23 +447,47 @@ our @ISA = ('File::OM');
 
 sub elem {	# OM::Plain
 	my $self = shift;
-	my ($name, $value, $elemnum, $lineno) = (shift, shift, shift, shift);
-	my $s = '';
+	my ($name, $value, $lineno, $elemnum) = (shift, shift, shift, shift);
+	my ($s, $z) = ('', '');		# built string and catchup string
 
-	defined($elemnum)	or $elemnum = 1;
-	defined($lineno)	or $lineno = '1:';
+	$self->{record_is_open} or	# call orec() to open record first
+		($z =  $self->orec(undef, $lineno),	# may call ostream()
+		$self->{record_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+
+	defined($elemnum) and
+		$self->{elemnum} = $elemnum
+	or
+		$self->{elemnum}++;
+
 	# Parse $lineno, which is empty or has form LinenumType, where
 	# Type is either ':' (real element) or '#' (comment).
-	my ($num, $type) =		# don't really need, as no comments
+	defined($lineno)	or $lineno = '1:';
+	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
 
-	if ($type ne '#') {
-		$self->{element_name} = $name;
-		$s .= $value . "\n"		if $value;
+	use Text::Wrap;		# recommends localizing next two settings
+	local $Text::Wrap::columns = $self->{wrap};
+	local $Text::Wrap::huge = 'overflow';
+
+	if ($type eq '#') {			# Plain pseudo-comment!
+		$self->{element_name} = undef;	# indicates comment
+		$self->{elemnum}--;		# doesn't count as an element
+		$s .= Text::Wrap::wrap(		# wrap lines with '# ' as
+			'# ',			# first line "indent" and
+			'# ',			# '# ' for all other indents
+			$self->comment_encode($value)	# main part to wrap
+		);
+		$s .= "\n";			# close comment
 	}
-	else {				# Plain pseudo-comment!
-		$self->{element_name} = '#';
-		$s .= " $value\n"		if $value;
+	elsif ($value) {	# don't print if empty value (feature of Plain)
+		$self->{element_name} = $self->name_encode($name);
+		$s .= Text::Wrap::wrap(		# wrap lines with '' as
+			'',			# first line "indent" and
+			'',			# '' for all other indents
+			$self->value_encode($value)	# main part to wrap
+		);
+		$s .= "\n";
 	}
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -399,9 +498,20 @@ sub elem {	# OM::Plain
 sub orec {	# OM::Plain
 	my $self = shift;
 	my ($recnum, $lineno) = (shift, shift);
-	my $s = '';
+	my ($s, $z) = ('', '');		# built string and catchup string
 
-	defined($recnum)	or $recnum = 1;
+	$self->{elemnum} = 0;
+	$self->{stream_is_open} or	# call ostream() to open stream first
+		($z = $self->ostream(),
+		$self->{stream_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{record_is_open} = 1;
+
+	defined($recnum) and
+		$self->{recnum} = $recnum
+	or
+		$self->{recnum}++;
+
 	defined($lineno)	or $lineno = '1:';
 
 	$self->{verbose} and
@@ -414,7 +524,7 @@ sub orec {	# OM::Plain
 
 sub crec {	# OM::Plain
 	my ($self, $recnum) = (shift, shift);
-	defined($recnum)	or $recnum = 1;
+	$self->{record_is_open} = 0;
 	my $s = "\n";
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -425,6 +535,9 @@ sub crec {	# OM::Plain
 sub ostream {	# OM::Plain
 	my $self = shift;
 	my $s = '';
+
+	$self->{recnum} = 0;
+	$self->{stream_is_open} = 1;
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -435,7 +548,11 @@ sub ostream {	# OM::Plain
 
 sub cstream {	# OM::Plain
 	my $self = shift;
-	my $s = '';
+	my ($s, $z) = ('', '');		# built string and catchup string
+	$self->{record_is_open} and	# wrap up any loose ends
+		$z = $self->crec();
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{stream_is_open} = 0;
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -464,19 +581,29 @@ our @ISA = ('File::OM');
 sub elem {	# OM::Turtle
 
 	my $self = shift;
-	my ($name, $value, $elemnum, $lineno) = (shift, shift, shift, shift);
-	my $s = '';
+	my ($name, $value, $lineno, $elemnum) = (shift, shift, shift, shift);
+	my ($s, $z) = ('', '');		# built string and catchup string
 
-	defined($elemnum)	or $elemnum = 1;
-	defined($lineno)	or $lineno = '1:';
+	$self->{record_is_open} or	# call orec() to open record first
+		($z =  $self->orec(undef, $lineno),	# may call ostream()
+		$self->{record_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+
+	defined($elemnum) and
+		$self->{elemnum} = $elemnum
+	or
+		$self->{elemnum}++;
+
 	# Parse $lineno, which is empty or has form LinenumType, where
 	# Type is either ':' (real element) or '#' (comment).
-	my ($num, $type) =		# don't really need, as no comments
+	defined($lineno)	or $lineno = '1:';
+	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
 
 	if ($type eq '#') {
 		$self->{element_name} = undef;	# indicates comment
-		$s .= "\n" . $self->comment_encode($value) . "\n";
+		$self->{elemnum}--;		# doesn't count as an element
+		$s .= "\n#" . $self->comment_encode($value) . "\n";
 		#
 		# To create syntactically correct Turtle, we need
 		# to end a comment with a newline at the end; this
@@ -487,7 +614,7 @@ sub elem {	# OM::Turtle
 	}
 	else {
 		$self->{element_name} = $self->name_encode($name);
-		$elemnum > 1		and $s .= ' ;';
+		$self->{elemnum} > 1		and $s .= ' ;';
 		$s .= "\n" . $self->{turtle_indent};
 		$s .= $self->{turtle_stream_prefix}
 			. ":$self->{element_name} "
@@ -504,9 +631,20 @@ sub elem {	# OM::Turtle
 sub orec {	# OM::Turtle
 	my $self = shift;
 	my ($recnum, $lineno) = (shift, shift);
-	my $s = '';
+	my ($s, $z) = ('', '');		# built string and catchup string
 
-	defined($recnum)	or $recnum = 1;
+	$self->{elemnum} = 0;
+	$self->{stream_is_open} or	# call ostream() to open stream first
+		($z = $self->ostream(),
+		$self->{stream_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{record_is_open} = 1;
+
+	defined($recnum) and
+		$self->{recnum} = $recnum
+	or
+		$self->{recnum}++;
+
 	defined($lineno)	or $lineno = '1:';
 
 	$self->{verbose} and
@@ -523,7 +661,7 @@ sub orec {	# OM::Turtle
 
 sub crec {	# OM::Turtle
 	my ($self, $recnum) = (shift, shift);
-	defined($recnum)	or $recnum = 1;
+	$self->{record_is_open} = 0;
 	my $s = " .\n\n";
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -533,8 +671,12 @@ sub crec {	# OM::Turtle
 
 sub ostream {	# OM::Turtle
 	my $self = shift;
+	my $s = '';;
+
+	$self->{recnum} = 0;
+	$self->{stream_is_open} = 1;
 	# add the Turtle preamble
-	my $s = "\@prefix $self->{turtle_stream_prefix}: <"
+	$s .= "\@prefix $self->{turtle_stream_prefix}: <"
 		. $self->{turtle_predns} .  "> .\n";
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -544,7 +686,11 @@ sub ostream {	# OM::Turtle
 
 sub cstream {	# OM::Turtle
 	my $self = shift;
-	my $s = '';
+	my ($s, $z) = ('', '');		# built string and catchup string
+	$self->{record_is_open} and	# wrap up any loose ends
+		$z = $self->crec();
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{stream_is_open} = 0;
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -578,22 +724,46 @@ package File::OM::XML;
 our @ISA = ('File::OM');
 
 sub elem {	# OM::XML
-
 	my $self = shift;
-	my ($name, $value, $elemnum, $lineno) = (shift, shift, shift, shift);
-	my $s = '';
+	my ($name, $value, $lineno, $elemnum) = (shift, shift, shift, shift);
+	my ($s, $z) = ('', '');		# built string and catchup string
 
-	defined($elemnum)	or $elemnum = 1;
-	defined($lineno)	or $lineno = '1:';
+	$self->{record_is_open} or	# call orec() to open record first
+		($z = $self->orec(undef, $lineno),	# may call ostream()
+		$self->{record_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+
+	defined($elemnum) and
+		$self->{elemnum} = $elemnum
+	or
+		$self->{elemnum}++;
+
 	# Parse $lineno, which is empty or has form LinenumType, where
 	# Type is either ':' (real element) or '#' (comment).
+	defined($lineno)	or $lineno = '1:';
 	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
+
+	use Text::Wrap;		# recommends localizing next two settings
+	local $Text::Wrap::columns = $self->{wrap};
+	local $Text::Wrap::huge = 'overflow';
+
 	if ($type eq '#') {
 		# xxx this should be stacked
 		$self->{element_name} = undef;	# indicates comment
-		$s .= "$self->{indent}<!-- " .
-			$self->comment_encode($value);
+		$self->{elemnum}--;		# doesn't count as an element
+
+		my $enc_com = $self->comment_encode($value);	# encoded value
+		$s .= $enc_com =~ /^\s*$/ ?		# wrap() loses label of
+			$self->{indent} .		# a blank value so put
+				"<!-- $enc_com" :	# here instead
+			Text::Wrap::wrap(		# wrap lines; this 1st
+				"$self->{indent}<!-- ",	# "indent" won't break
+				$self->{indent},	# other line indents
+				$enc_com)		# main part to wrap
+		;
+		#$s .= "$self->{indent}<!-- " .
+		#	$self->comment_encode($value);
 		# M_ELEMENT and C_ELEMENT would start here
 		$s .= " -->\n";			# close comment
 	}
@@ -604,8 +774,18 @@ sub elem {	# OM::XML
 		# across all outformat types.
 		#
 		$self->{element_name} = $self->name_encode($name);
-		$s .= $self->{indent} . "<$self->{element_name}>"
-			. $self->value_encode($value);
+		my $enc_val = $self->value_encode($value);	# encoded value
+		$s .= $enc_val =~ /^\s*$/ ?		# wrap() loses label of
+			$self->{indent} .		# a blank value so put
+				"<$self->{element_name}>" :	# here instead
+			Text::Wrap::wrap(		# wrap lines; this 1st
+				$self->{indent} .	# "indent" won't break
+					"<$self->{element_name}>",	# label
+				$self->{indent},	# other line indents
+				$enc_val)		# main part to wrap
+		;
+		#$s .= $self->{indent} . "<$self->{element_name}>"
+		#	. $self->value_encode($value);
 		# M_ELEMENT and C_ELEMENT would start here
 		$s .= "</$self->{element_name}>\n";
 	}
@@ -618,15 +798,27 @@ sub elem {	# OM::XML
 sub orec {	# OM::XML
 	my $self = shift;
 	my ($recnum, $lineno) = (shift, shift);
+	my ($s, $z) = ('', '');		# built string and catchup string
 
-	defined($recnum)	or $recnum = 1;
+	$self->{elemnum} = 0;
+	$self->{stream_is_open} or	# call ostream() to open stream first
+		($z = $self->ostream(),
+		$self->{stream_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{record_is_open} = 1;
+
+	defined($recnum) and
+		$self->{recnum} = $recnum
+	or
+		$self->{recnum}++;
+
 	defined($lineno)	or $lineno = '1:';
 
-	my $s .= $self->{indent} .			# use indent and
+	$s .= $self->{indent} .			# use indent and
 		"<$self->{xml_record_name}>";
 	$self->{indent} =~ s/$/$self->{indent_step}/;	# increase indent
 	$self->{verbose} and
-		$s .= "   <!-- from record $recnum, line $lineno -->";
+		$s .= "   <!-- from record $self->{recnum}, line $lineno -->";
 	$s .= "\n";
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -636,7 +828,7 @@ sub orec {	# OM::XML
 
 sub crec {	# OM::XML
 	my ($self, $recnum) = (shift, shift);
-	defined($recnum)	or $recnum = 1;	# not using now? yyy
+	$self->{record_is_open} = 0;
 	$self->{indent} =~ s/$self->{indent_step}$//;	# decrease indent
 	my $s = $self->{indent} .			# and use indent
 		"</$self->{xml_record_name}>\n";
@@ -648,9 +840,11 @@ sub crec {	# OM::XML
 
 sub ostream {	# OM::XML
 	my $self = shift;
+
+	$self->{recnum} = 0;
+	$self->{stream_is_open} = 1;
 	# xxx preamble goes here, from other args?
 # xxx anvl -m anvln? n=normalized?
-
 	$self->{indent} = $self->{indent_start};	# current indent width
 	$self->{indent} =~ s/$/$self->{indent_step}/;	# increase indent
 	my $s = "<$self->{xml_stream_name}>\n";
@@ -662,8 +856,13 @@ sub ostream {	# OM::XML
 
 sub cstream {	# OM::XML
 	my $self = shift;
+	my ($s, $z) = ('', '');		# built string and catchup string
+	$self->{record_is_open} and	# wrap up any loose ends
+		$z = $self->crec();
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{stream_is_open} = 0;
 	$self->{indent} =~ s/$self->{indent_step}$//;	# decrease indent
-	my $s = "</$self->{xml_stream_name}>\n";
+	$s .= "</$self->{xml_stream_name}>\n";
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -722,17 +921,15 @@ File::OM - output multiplexer routines
  $om->cstream();            # close stream
 
  $om->orec(                 # open record
-       $recnum,             # record number (default 1)
-       $lineno);            # input line number (default 1)
+       $recnum);            # record number (normally tracked from 1)
 
- $om->crec(                 # close record
-       $recnum);            # record number (default 1)
+ $om->crec();               # close record
 
  $om->elem(                 # output an entire element
        $name,               # string representing element name
        $value,              # string representing element value
-       $elemnum,            # element number (default 1)
-       $lineno);            # starting input line number (default '1:')
+       $lineno,             # input line number/type (default '1:')
+       $elemnum);           # element number (normally tracked from 1))
 
  $om->elems(                # output elements; wrap ANVL/Plain/XML lines
        $name,               # string representing first element name
@@ -769,13 +966,18 @@ such as "34:" or "6#".  The number indicates the line number (or octet
 offset, depending on the origin format) of the start of the element.  The
 letter is either ':' to indicate a real element or '#' to indicate a
 comment; if the latter, the element name has no defined meaning and the
-comment is contatined in the value.
+comment is contatined in the value.  To output an element as a comment
+without regard to line number, give $lineno as "#".
 
 B<OM> presents an object oriented interface.  The object constructor
 takes a format argument and returns C<undef> if the format is unknown.
 The returned object has methods for creating format-appropriate output
 corresponding (currently) to five output modes; for a complete
-application of these methods, see L<File::ANVL::anvl_om>.
+application of these methods, see L<File::ANVL::anvl_om>.  Nonetheless,
+an application can easily call no method but C<elem()>, as the
+necessary open (C<orec()> and C<ostream>) and close (C<crec()> and
+C<cstream()>) methods will be invoked automatically before the first
+element is output and before the object is destroyed, respectively.
 
 Constructor options include 'verbose', which causes the methods to insert
 record and line numbers as comments or pseudo-comments (e.g., for JSON,
@@ -801,31 +1003,31 @@ the status of the print call.  Constructor options and defaults:
  turtle_subjelpat => '',        # pattern for matching subject element
  turtle_stream_prefix => 'erc', # symbol we use for turtle
  wrap             => 72,        # wrap text to 72 cols (ANVL, Plain, XML)
+ wrap_indent      => '',        # Text::Wrap will insert; "\t" for ANVL
  xml_stream_name  => 'recs',    # for XML output, stream tag
  xml_record_name  => 'rec',     # for XML output, record tag
 
  # Used to maintain object state.
- indent           => '',        # current ident
+ elemnum          => 0,         # current element number
  elemsref         => [],        # one array to store record elements
+ indent           => '',        # current ident
+ recnum           => 0,         # current record number
  }
 
-In this release of the B<OM> package, objects carry very limited state
-information.  A sense of current indention level is maintained, but there
-is no stack of "open elements".  Right now there is only a "whole element
-at once" method (C<elem()>) that takes a name and value arguments to
-construct a complete element.  Future releases may support methods for
-opening and closing elements.
+In this release of the B<OM> package, objects carry limited state
+information.  Maintained are the current indention level, element number,
+and record number, but there is no stack of "open elements".  Right now
+there is only a "whole element at once" method (C<elem()>) that takes
+name and value arguments to construct a complete element.  Future
+releases may support methods for opening and closing elements.
 
-Most method arguments are optional, but for formats that put separators
+The B<OM> package automatically tracks element and record numbers, but
+the optional C<$recnum> and C<$elemnum> method arguments can be used to
+set them to specific values.  They help with formats that put separators
 before every element or record except for the first one (e.g., JSON uses
-commas), the default values will not produce satisfactory results.  The
-C<$lineno> arguments refer to input line numbers that may be useful with
-the 'verbose' option and creating helpful diagnostic messages.
-
-The caller may elect to use none or all of the methods.  It would not
-be unusual for an application to use only the C<elem()> method for
-output, especially when another application will be wrapping that output
-for its own purposes.
+commas).  The C<$lineno> argument is meant to refer to input line numbers
+that may be useful with the 'verbose' option and creating diagnostic
+messages.
 
 =head1 SEE ALSO
 

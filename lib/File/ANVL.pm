@@ -228,7 +228,7 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 	/\n\n/ and
 		return "error: record should have no internal blank line(s)";
 	# xxx adjust regexp for ANVLR
-	! /^[^\s:][\w 	]*:/m and	# match against first element
+	/^[^\s:][\w 	]*:/m or	# match against first element
 		return "error: record ($_) should begin with a label and colon";
 
 	# Any other unindented line not containing a colon will either
@@ -241,16 +241,17 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 		s/^#.*\n//gm;		# up to and including final \n
 
 	s/^/ $linenum++ . ":" /gem;	# put a line number on each line
-	#
+
 	# Now put a pseudo-element name '#:' on each comment (if any) and
 	# change first ':' separator to '#' for positive identification.
 	# Eg, '# foo' on line 3 becomes '3##:# foo', which conforms to
 	# the eventual split pattern we rely on (at end).
-	#
-	s/^(\d+):#/$1##:#/gm;	
-	#            ^^ ^
-	#            12 3
-	# 1=separator, 2=pseudo-name, 3=start of original value
+
+#split /\n*^(\d+[:#])(?:(#):#|([^\s:][^:]*):\s*)/m
+	s/^(\d+):#/$1##:/gm;	
+	#            ^^^
+	#            123
+	# 1=separator, 2=pseudo-name, 3=original value minus '#' starts after :
 
 	my $msg = "";			# default return message
 
@@ -260,7 +261,9 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 	# no colon at all.
 	# 
 	# This next substitution match is multi-line to avoid explicit
-	# looping.  (xxx is this an efficient way to do it?)
+	# looping (yyy is this an efficient way to do it?).  It indents
+	# by one space any line starting without a space or colon and
+	# that has no instance of a colon until end of line.
 	#
 	my $indented = s/^(\d+:)([^\s:][^:]*)$/$1 $2/gm;
 	if ($indented) {
@@ -272,18 +275,15 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 	}
 
 	# Now we join the (normalized) continuation lines (GRANVL style)
-	# so each element-value pair is on one line.
+	# so each element-value pair is on one line.  The + in [ \t]+ is
+	# very important; we can't use \s+ here because \s matches a \n.
 	#
-	s/\n\d+:\s+/ /g;
+	s/\n\d+:[ \t]+/ /g;
+	#s/\n\d+:\s+/ /g;
 	# XXX should we have a newline-preserving form of parse?
 
-	# xxx normalize end of string with terminal \n if none
-	# $num = $.;	# linenum
-	# s/^/ $num++ . ":" /e	while (/\n/g);
-	# /\G  ($N\#.*\n)+  (?=$N[^\#]) /gx	# comment block
-	# /\G  ($N\S.*\n)+  (?=$N[^\S]) /gx	# element on one or more lines
-	# /\G  (#.*\n)+(?=[^#])/g
-	# /^#.*?\n[^#]/s        # (?=lookahead)
+	# Get rid of initial whitespace from all non-comment GRANVL values.
+	s/^(\d+:[^\s:][^:]*:)[ \t]+/$1/gm;
 
 	# Split into array of element pairs.  Toss first "false" split.
 	# xxx buggy limited patterns, how not to match newline
@@ -294,11 +294,20 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 	s/\n$//;			# strip final \n
 	@$r_elems = ("ANVL", "beta",	# third elem provided by
 		# unneeded first element resulting from the split
-		split /\n*^(\d+[:#])([^\s:][^:]*):\s*/m
+
+		split /\n*^(\d+[:#])([^\s:][^:]*):/m
+
 	);
 	#(undef, @$r_elems) = split /\n*^([^\s:][\w 	]*):\s*/m;
 
-#return "_=$_\n" . join(", ", @$r_elems);	# xxx
+	# yyy an approach once considered but not used
+	# $num = $.;	# linenum
+	# s/^/ $num++ . ":" /e	while (/\n/g);
+	# /\G  ($N\#.*\n)+  (?=$N[^\#]) /gx	# comment block
+	# /\G  ($N\S.*\n)+  (?=$N[^\S]) /gx	# element on one or more lines
+	# /\G  (#.*\n)+(?=[^#])/g
+	# /^#.*?\n[^#]/s        # (?=lookahead)
+	#return "_=$_\n" . join(", ", @$r_elems);	# to check results
 
 	return $msg;
 }
@@ -597,6 +606,7 @@ sub anvl_om {
 	my ($startline, $recnum, $elemnum) = (1, 0, 0);
 	my ($wslines, $rrlines);
 	my $r_elems = $om->{elemsref};		# abbreviation
+	# xxx is that reference kosher?
 
 	while (1) {
 
@@ -656,7 +666,9 @@ sub anvl_om {
 
 			# Instead of $om->oelem, $om->celem, $om->contelem, 
 			# combine open and close into one:
-			$s = $om->elem($name, $value, $elemnum, $lineno);
+			#
+			$s = $om->elem($name, $value, $lineno);
+
 			$p and ($st &&= $s), 1 or ($st .= $s);
 		}
 		$s = $om->crec($recnum);
