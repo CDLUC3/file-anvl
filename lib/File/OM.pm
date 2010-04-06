@@ -1,5 +1,7 @@
 package File::OM;
 
+# xxx To do: make test sets more comprehensive and systemmatic
+
 # xxx bind:
 #     --nofiles = index only, don't save this binding in non-volatile storage
 #     --noindex = don't index, just save this binding in non-volatile storage
@@ -11,7 +13,7 @@ use strict;
 use warnings;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-0-20 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-0-21 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -126,8 +128,6 @@ sub elems {
 	return $sequence;
 }
 
-# xxx To do: make test sets more comprehensive and systemmatic
-
 package File::OM::ANVL;
 
 our @ISA = ('File::OM');
@@ -160,7 +160,7 @@ sub elem {	# OM::ANVL
 	if ($type eq '#') {
 		$self->{element_name} = undef;	# indicates comment
 		$self->{elemnum}--;		# doesn't count as an element
-		$s .= Text::Wrap::wrap(		# wrap lines with '# ' as
+		$s .= Text::Wrap::wrap(		# wrap lines with '#' as
 			'#',			# first line "indent" and
 			'# ',			# '# ' for all other indents
 			$self->comment_encode($value)	# main part to wrap
@@ -473,8 +473,8 @@ sub elem {	# OM::Plain
 	if ($type eq '#') {			# Plain pseudo-comment!
 		$self->{element_name} = undef;	# indicates comment
 		$self->{elemnum}--;		# doesn't count as an element
-		$s .= Text::Wrap::wrap(		# wrap lines with '# ' as
-			'# ',			# first line "indent" and
+		$s .= Text::Wrap::wrap(		# wrap lines with '#' as
+			'#',			# first line "indent" and
 			'# ',			# '# ' for all other indents
 			$self->comment_encode($value)	# main part to wrap
 		);
@@ -756,16 +756,16 @@ sub elem {	# OM::XML
 		my $enc_com = $self->comment_encode($value);	# encoded value
 		$s .= $enc_com =~ /^\s*$/ ?		# wrap() loses label of
 			$self->{indent} .		# a blank value so put
-				"<!-- $enc_com" :	# here instead
+				"<!--$enc_com" :	# here instead
 			Text::Wrap::wrap(		# wrap lines; this 1st
-				"$self->{indent}<!-- ",	# "indent" won't break
+				"$self->{indent}<!--",	# "indent" won't break
 				$self->{indent},	# other line indents
 				$enc_com)		# main part to wrap
 		;
 		#$s .= "$self->{indent}<!-- " .
 		#	$self->comment_encode($value);
 		# M_ELEMENT and C_ELEMENT would start here
-		$s .= " -->\n";			# close comment
+		$s .= "-->\n";			# close comment
 	}
 	else {
 		# xxx we're saving this to no end; in full form

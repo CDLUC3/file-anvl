@@ -115,7 +115,7 @@ is $om->elem('abracadabra', 'cd ef gh ij kl mn op', '#'),
 $om = File::OM->new("plain", {wrap=>14});
 
 is $om->elem('abracadabra', 'cd ef gh ij kl mn op', '#'),
-	'# cd ef gh ij
+	'#cd ef gh ij
 # kl mn op
 ',	'Plain comment wrap';
 
@@ -123,9 +123,9 @@ $om = File::OM->new("xml", {wrap=>14});
 
 is $om->elem('abracadabra', 'cd ef gh ij kl mn op', '#'), '<recs>
   <rec>
-    <!-- cd
-    ef gh ij
-    kl mn op -->
+    <!--cd ef
+    gh ij kl
+    mn op-->
 ',	'XML comment wrap';
 
 is $om->elem('abracadabra', 'cd ef gh ij kl mn op', ':'),
@@ -134,9 +134,7 @@ is $om->elem('abracadabra', 'cd ef gh ij kl mn op', ':'),
     kl mn op</abracadabra>
 ',	'XML element wrap';
 
-
-exit 0;
-
+$om = File::OM->new("anvl");
 is $om->elems('a', 'b', 'c', 'd'), "a: b\nc: d\n", 'elems for ANVL';
 
 is $om->elems('a', 'b now is the time for all good men to come to the aid of the party and it is still time', 'c', 'd now is the time for all good men to come to the aid of the party and it is still time'),
@@ -147,8 +145,17 @@ c: d now is the time for all good men to come to the aid of the party
 ',
 	'bigger elems for ANVL';
 
-$om = File::OM->new("xml", { wrap => 18 });
-is $om->elems('a', 'b now is the time for all good men to come to the aid of the party and it is still time', 'c', 'd now is the time for all good men to come to the aid of the party and it is still time'), 'xxx', 'wrap 18';
+$om = File::OM->new("xml", { wrap => 58 });
+is $om->elems('a', 'b now is the time for all good men to come to the aid of the party and it is still time', 'c', 'd now is the time for all good men to come to the aid of the party and it is still time'),
+'<recs>
+  <rec>
+    <a>b now is the time for all good men to come to the
+    aid of the party and it is still time</a>
+    <c>d now is the time for all good men to come to the
+    aid of the party and it is still time</c>
+', 'bigger elems form XML, wrap 58';
+
+exit 0;
 
 # XXXXX
 #$om = File::OM->new("xml");

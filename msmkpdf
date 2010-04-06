@@ -1,10 +1,10 @@
 #!/bin/sh
 
 CH="Micro-Services"
-CF=`date '+%Y-%m-%d'`
-LF="CDL `perl VERSION`"
+CF=`date '+%Y.%m.%d'`
+LF="UC3/CDL `perl VERSION`"
 
-pod2man -c "$CH" -d "$CF" -r "$LF" $1 - | groff -man | \
+pod2man -c "$CH" -d "$CF" -r "$LF" $1 - | groff -man -rS12 | \
     gs -sDEVICE=pdfwrite -sOutputFile=$1.pdf -dNOPAUSE -dBATCH - > /dev/null
 
 #acroread noid.pdf; exit

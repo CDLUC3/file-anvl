@@ -45,7 +45,7 @@ use File::ANVL;
 
 { 	# ANVL conversion, interleaving output formats for easy comparison
 
-remake_td();	# xxx not using this (yet?)
+remake_td();
 
 my $x;
 my $recstream = "a: b
@@ -78,7 +78,7 @@ like $x, qr{
 <rec>\n\s*
  <a>b</a>\n\s*
  <c>d</c>\n\s*
- <!--\s*note.*\s-->\n\s*
+ <!--note.*self-->\n\s*
 </rec>\n\s*
 }xs, 'anvl2xml conversion with comment';
 
@@ -445,7 +445,7 @@ $x = `echo "$recstream" | $cmd --verbose --comments -m xml`;
 is $x, '<recs>
   <rec>   <!-- from record 1, line 1 -->
     <a>b</a>
-    <!-- note to self -->
+    <!--note to self-->
     <c>d</c>
   </rec>
 </recs>

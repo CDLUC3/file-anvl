@@ -83,10 +83,6 @@ __END__
 
 =pod
 
-=for roff
-.nr PS 12p
-.nr VS 14.4p
-
 =head1 NAME
 
 anvl - commands to convert and manipulate ANVL records
@@ -204,7 +200,7 @@ Preserve comments during B<--format> conversion, target format permitting.
 =item B<-m> I<format>, B<--format> I<format>
 
 Convert to the given I<format>, currently one of "ANVL" (default), "XML",
-"Turtle", "JSON", or "plain".  When converting to the JSON or plain
+"Turtle", "JSON", or "Plain".  When converting to the JSON or plain
 formats comments are not preserved.
 
 =item B<-h>, B<--help>
