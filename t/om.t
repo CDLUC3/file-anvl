@@ -1,6 +1,8 @@
 use 5.006;
 use Test::More qw( no_plan );
 
+# xxx To do: make test sets more comprehensive and systemmatic
+
 use strict;
 use warnings;
 
@@ -155,19 +157,16 @@ is $om->elems('a', 'b now is the time for all good men to come to the aid of the
     aid of the party and it is still time</c>
 ', 'bigger elems form XML, wrap 58';
 
-exit 0;
-
-# XXXXX
-#$om = File::OM->new("xml");
-#is $om->elems('a', 'b now is the time for all good men to come to the aid of the party and it is still time', 'c', 'd now is the time for all good men to come to the aid of the party and it is still time'),
-#  '<recs>
-#  <rec>
-#    <a>b now is the time for all good men to come to the aid of
-#	party and it is still time</a>
-#    <c>d now is the time for all good men to come to the aid of the
-#	party and it is still time</c>
-#',
-#	'bigger elems for XML';
+$om = File::OM->new("xml");
+is $om->elems('a', 'b now is the time for all good men to come to the aid of the party and it is still time', 'c', 'd now is the time for all good men to come to the aid of the party and it is still time'),
+  '<recs>
+  <rec>
+    <a>b now is the time for all good men to come to the aid of the
+    party and it is still time</a>
+    <c>d now is the time for all good men to come to the aid of the
+    party and it is still time</c>
+',
+	'bigger elems for XML';
 
 $om = File::OM->new("ANVL");
 is $om->elem('ab', 'cd'), 'ab: cd

@@ -1,7 +1,5 @@
 package File::OM;
 
-# xxx To do: make test sets more comprehensive and systemmatic
-
 # xxx bind:
 #     --nofiles = index only, don't save this binding in non-volatile storage
 #     --noindex = don't index, just save this binding in non-volatile storage
@@ -233,7 +231,6 @@ sub ostream {	# OM::ANVL
 
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
-	# xxx preamble goes here, from other args?
 	my $s = '';
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -843,8 +840,6 @@ sub ostream {	# OM::XML
 
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
-	# xxx preamble goes here, from other args?
-# xxx anvl -m anvln? n=normalized?
 	$self->{indent} = $self->{indent_start};	# current indent width
 	$self->{indent} =~ s/$/$self->{indent_step}/;	# increase indent
 	my $s = "<$self->{xml_stream_name}>\n";
