@@ -1,5 +1,7 @@
 
-	ANVL MODULE AND COMMAND SCRIPT INSTALLATION INSTRUCTIONS
+		ANVL SUITE SCRIPT INSTALLATION INSTRUCTIONS
+
+	(Includes modules ANVL, OM, and ERC and commands anvl and erc)
 
 
 ANVL OVERVIEW
@@ -10,8 +12,16 @@ ending in a blank line, where each element consists of a label, colon,
 and value and long values may be continued on subsequent indented lines.
 ANVL is somewhat comparable to the JSON and YAML syntaxes.
 
+An ERC (Electronic Resource Citation) is a (meta)data record with
+elements that can be expressed in a variety of concrete syntaxes, such as
+ANVL, Turtle, XML, and JSON.  The ERC Perl module currently only provides a
+lookup for ERC element names and corresponding semi-numeric codes.
 
-ANVL INSTALLATION
+The OM (Output Multiplexer) module provides formatting support for the
+above-mentioned set of syntaxes.
+
+
+ANVL SUITE INSTALLATION
 
 If not already unpacked, unpack the suite with
 
