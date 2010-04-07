@@ -118,7 +118,7 @@ erc - lookup Electronic Resource Citation metadata tags
 =head1 DESCRIPTION
 
 The C<erc> utility is currently a simple interface to the query metadata
-tags from the ERC vocabulary.  It's one sub-command, B<get>, receives
+tags from the ERC vocabulary.  Its one sub-command, B<get>, receives
 zero or more tag arguments, which are either numbers, element names, or
 regular expressions.  Given one or more tags, it prints the corresponding
 ERC element name, a tab, and its semi-numeric code, one per line.  With
@@ -132,7 +132,7 @@ Otherwise the tag will be looked up as an element name.  The return
 status will be 1 if any requested code is not known.
 
 This is beta-level software.  To create and convert ERC records, see the
-L<anvl(1p)> command and the L<File::ANVL> and L<File::OM> Perl modules.
+L<anvl(1)> command and the L<File::ANVL> and L<File::OM> Perl modules.
 
 =head1 EXAMPLES
 
