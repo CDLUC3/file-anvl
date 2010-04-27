@@ -11,7 +11,7 @@ use strict;
 use warnings;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-0-21 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-0-22 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -900,7 +900,7 @@ __END__
 
 =head1 NAME
 
-File::OM - output multiplexer routines
+File::OM - Output Multiplexer routines
 
 =head1 SYNOPSIS
 

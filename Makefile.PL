@@ -8,7 +8,7 @@ WriteMakefile(
     NAME                => 'File::ANVL',
     AUTHOR              => 'John A. Kunze <jak@ucop.edu>',
     VERSION_FROM        => 'VERSION',
-    ABSTRACT_FROM       => 'lib/File/ANVL.pm',
+    ABSTRACT            => 'commands and routines for ANVL, ERC, and OM',
     ($ExtUtils::MakeMaker::VERSION >= 6.3002
       ? ('LICENSE'=> 'BSD')
       : ()),
