@@ -621,6 +621,13 @@ sub anvl_om {
 		$msg = anvl_recarray($anvlrec, $r_elems, $startline, $o);
 		$msg		and return "anvl_recarray: $msg";
 
+		# NB: apply 'find' here before possible expansion, which
+		# means that a pattern like "who:\s*smith" won't work on
+		# on a short form ANVL record.
+		#
+		$$o{find} and ($anvlrec !~ /$$o{find}/m) and
+			next;
+
 		# If caller has set $$o{elemsproc} to a code reference,
 		# it is called to process the element array just returned
 		# from anvl_recarray.  Typically this is used to convert
@@ -663,6 +670,10 @@ sub anvl_om {
 			last	unless defined $name; 	# end of record
 
 			$elemnum++		unless $name eq '#';
+
+			# Skip if 'show' given and not requested.
+			$$o{show} and ("$name: $value" !~ /$$o{show}/m) and
+				next;
 
 			# Instead of $om->oelem, $om->celem, $om->contelem, 
 			# combine open and close into one:

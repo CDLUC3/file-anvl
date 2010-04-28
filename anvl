@@ -15,11 +15,13 @@ use Getopt::Long qw(:config bundling_override);
 
 my %opt = (
 	comments	=> 0,
+	find		=> 0,
 	format		=> 0,
 	help		=> 0,
 	listformats	=> 0,
 	man		=> 0,
 	predns		=> 0,
+	show		=> 0,
 	subjelpat	=> 0,
 	version		=> 0,
 	verbose		=> 0,
@@ -29,11 +31,13 @@ my %opt = (
 {
 	GetOptions(\%opt,
 		'comments',
+		'find=s',
 		'format|m=s',
 		'help|h|?',
 		'listformats',
 		'man',
 		'predns=s',
+		'show=s',
 		'subjelpat=s',
 		'version',
 		'verbose|v',
@@ -54,6 +58,8 @@ my %opt = (
 	my $anvl_opt = File::ANVL::anvl_opt_defaults();	# ref to hash
 	$$anvl_opt{comments} = $opt{comments};	# whether to keep comments
 	$$anvl_opt{verbose} = $opt{verbose};	# more output
+	$$anvl_opt{find} = $opt{find};	# find records matching given regex
+	$$anvl_opt{show} = $opt{show};	# show given elems in recs found
 
 	# While anvl_opt and om_opt share some keys, they're used differently.
 
@@ -91,22 +97,17 @@ anvl - commands to convert and manipulate ANVL records
 
 =over
 
-=item B<anvl> [B<--format xml>] [B<--comments>] [I<file> ...]
-
-=item B<anvl> [B<--format turtle>] [B<--comments>] [B<--predns> I<namespace>] [B<--subjelpat> I<pattern>] [I<file> ...]
-
-=item B<anvl> [B<--format json>] [I<file> ...]
-
-=item B<anvl> [B<--format plain>] [I<file> ...]
+=item B<anvl> [B<--format> I<format>] [I<other_options>] [I<file> ...]
 
 =back
 
 =head1 DESCRIPTION
 
-The B<anvl> utility converts ANVL records to a variety of formats.  An
-ANVL (A Name Value Language) record is a text-based sequence of elements
-ending in a blank line, where each element consists of a label, colon,
-and value and long values may be continued on subsequent indented lines.
+The B<anvl> utility converts ANVL records to a variety of formats,
+including XML, Turtle, JSON, ANVL (long form), and Plain.  An ANVL (A
+Name Value Language) record is a text-based sequence of elements ending
+in a blank line, where each element consists of a label, colon, and value
+and long values may be continued on subsequent indented lines.
 
 This utility reads one or more I<file> arguments (or the standard input
 if none) and writes on the standard output.  The current version assumes
@@ -130,7 +131,8 @@ before other processing is done.
      }
    ]
 
-Comments may be passed through to any output format that supports them.
+Comments may be passed through to any output format; pseudo-comments are
+produced if the target format doesn't natively support comments.
 
    $ echo '# A source of kernel knowledge.
    > erc: Kunze, John A. | A Metadata Kernel for Electronic Permanence
@@ -195,13 +197,15 @@ with this style sheet
 
 =item B<--comments>
 
-Preserve comments during B<--format> conversion, target format permitting.
+Preserve comments during B<--format> conversion, with pseudo-comments
+produced depending on the target format.
 
 =item B<-m> I<format>, B<--format> I<format>
 
 Convert to the given I<format>, currently one of "ANVL" (default), "XML",
-"Turtle", "JSON", or "Plain".  When converting to the JSON or plain
-formats comments are not preserved.
+"Turtle", "JSON", or "Plain".  When converting comments to the JSON or
+Plain formats, pseudo-comments are output.  Some options (below) apply
+only to specific target formats.
 
 =item B<-h>, B<--help>
 

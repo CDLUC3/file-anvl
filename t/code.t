@@ -200,3 +200,44 @@ is anvl_name_naturalize("Mao Tse Tung,"), "Mao Tse Tung",
 
 }
 
+{	# --find and --show
+
+remake_td();
+
+# create and open a file with 3 records and whitespace before and after
+my $recstream = '	 
+    
+a: now
+c: is
+e: the
+g: time
+
+a: for
+c: all
+e: good
+g: men
+
+a: to
+c: come
+e: to
+g: the
+
+a: aid
+c: of
+e: the
+g: party
+';
+my $x = `echo "$recstream" > $td/file`;
+
+$x = `$cmd --find 'the' $td/file`;
+like $x, qr/e: the.*\n\n.*g: the.*\n\n.*e: the/s,
+	'find 3 records';
+
+$x = `$cmd --show 'the' $td/file`;
+is $x, "e: the\n\n\ng: the\n\ne: the\n\n", 'show 3 lines in 4 records';
+
+$x = `$cmd --find '(now|aid)' --show '^g' $td/file`;
+is $x, "g: time\n\ng: party\n\n", 'find and show with regexes';
+
+remove_td
+}
