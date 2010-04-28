@@ -146,7 +146,7 @@ sub anvl_recsplit { my( $record, $r_elems, $strict )=@_;
 	! defined($strict) and
 		$strict = $strict_default;
 
-	$_ = $record;
+	local $_ = $record;
 	s/^\s*//; s/\s*$//;		# trim both ends
 	/\n$/	or s/$/\n/;		# normalize end of record to \n
 
@@ -322,6 +322,7 @@ sub anvl_valsplit { my( $value, $r_svals )=@_;
 		return "needs an ANVL value";
 	ref($r_svals) ne "ARRAY" and
 		return "2nd arg must reference an array";
+	local $_;
 
 	#xxx print "r_svals=$r_svals\n";
 	#xxx print "value=$value\n";
@@ -467,14 +468,20 @@ sub anvl_encode { my( $s )=@_;
 }
 
 # return $name in natural word order, using ANVL inversion points
-# XXXXXXXXX change spec to "final ,"
+# repeat for each final comma present
 sub anvl_name_naturalize { my( $name )=@_;
 
-	($_ = $name) ||= "";
-	/^\s*$/			and return $name;	# empty
-	s/,+\s*$//		or  return $name;	# doesn't end in ','
-	s/^(.*),\s*(.*)$/$2 $1/;
-	return $_;
+	$name ||= '';
+	$name =~ /^\s*$/	and return $name;	# empty
+
+	# "McCartney, Paul, Sir,,"
+	# a, b, c, d, e,,, -> e d c a, b
+	my $prefix = '';
+	while ($name =~ s/,\s*$//) {
+		$name =~ s/^(.*),\s*([^,]+)(,*$)/$1$3/ and
+			$prefix .= $2 . ' ';
+	}
+	return $prefix . $name;
 }
 
 sub anvl_summarize { my( @nodes )=@_; }
@@ -676,8 +683,11 @@ sub anvl_om {
 				next;
 
 			# Instead of $om->oelem, $om->celem, $om->contelem, 
-			# combine open and close into one:
+			# combine open and close into one, but first
+			# naturalize values if called upon.
 			#
+			$$o{invert} and $value =~ /,\s*$/ and
+				$value = anvl_name_naturalize($value);
 			$s = $om->elem($name, $value, $lineno);
 
 			$p and ($st &&= $s), 1 or ($st .= $s);
@@ -932,9 +942,19 @@ will affect an entire region.  This code prints
 The C<anvl_name_naturalize()> function takes an ANVL string (aval)
 and returns it after inversion at any designated inversion points.
 The input string will be returned if it does not end in a comma (`,').
-For example, "Pat Smith" is returned by the call,
+The more terminal commas, the more inversion points tried.  For example,
+the calls
 
      anvl_name_naturalize("Smith, Pat,");
+     anvl_name_naturalize("McCartney, Paul, Sir,,")
+     anvl_name_naturalize("Hu Jintao,")
+
+take sort-friendly strings (commonly used to make ANVL records easy
+to sort) and return the natural word order strings,
+
+     Pat Smith
+     Sir Paul McCartney
+     Hu Jintao
 
 The C<anvl_om()> routine takes a formatting object created by a call to
 C<File::OM($format)>, reads a stream of ANVL records, processes each

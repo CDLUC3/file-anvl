@@ -188,6 +188,8 @@ remove_td();
 
 {	# anvl_name_naturalize
 
+remake_td();
+
 is anvl_name_naturalize("Smith, John"), "Smith, John",
 	'naturalize, no final comma';
 
@@ -195,9 +197,33 @@ is anvl_name_naturalize("Smith, III, John,"), "John Smith, III",
 	'naturalize, with suffix';
 #print anvl_name_naturalize("Smith, III, John,"), "\n";
 
-is anvl_name_naturalize("Mao Tse Tung,"), "Mao Tse Tung",
+is anvl_name_naturalize("Hu Jintao,"), "Hu Jintao",
 	'naturalize, no internal comma';
 
+is anvl_name_naturalize("McCartney, Paul, Sir,,"), "Sir Paul McCartney",
+	'double-comma name';
+
+is anvl_name_naturalize("Health and Human Services, United States Government Department of, The,,"),
+	"The United States Government Department of Health and Human Services",
+	'double-comma title';
+
+is anvl_name_naturalize("a, b, c, d, e,,,"),
+	"e d c a, b",
+	'triple-comma value with 4th internal comma';
+
+my $recstream = '	 
+a: Hu Jintao,
+b: McCartney, Paul, Sir,,
+c: Health and Human Services, United States Government
+	Department of, The,,
+';
+my $x = `echo "$recstream" > $td/file`;
+
+$x = `$cmd --invert $td/file`;
+is $x, "a: Hu Jintao\nb: Sir Paul McCartney\nc: The United States Government Department of Health and Human Services\n\n",
+	'invert 3 values';
+
+remove_td
 }
 
 {	# --find and --show
