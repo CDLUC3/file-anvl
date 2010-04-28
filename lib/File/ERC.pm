@@ -88,7 +88,7 @@ sub tag2num_init {
 
 sub tag2num {
 
-	defined(@erc_termlist) && defined(%erc_tags) or
+	defined(@erc_termlist) && %erc_tags or
 		tag2num_init();		# one-time lazy definition
 	my (@ret, $tag);
 	foreach $tag (@_) {
