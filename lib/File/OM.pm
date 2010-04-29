@@ -1,17 +1,11 @@
 package File::OM;
 
-# xxx bind:
-#     --nofiles = index only, don't save this binding in non-volatile storage
-#     --noindex = don't index, just save this binding in non-volatile storage
-#     default is to do both, returning after saving in non-volatile storage
-#          and before backgrounding indexing step (except if --wait)
-
 use 5.006;
 use strict;
 use warnings;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-0-22 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-0-23 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
