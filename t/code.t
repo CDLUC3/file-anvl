@@ -39,6 +39,18 @@ sub remove_td {		# remove $td but make sure $td isn't set to "."
 	$@			and die "$td: couldn't remove: $@";
 }
 
+# Abbreviated version of "raw" File::Value::file_value()
+sub filval { my( $file, $value )=@_;	# $file must begin with >, <, or >>
+	if ($file =~ /^\s*>>?/) {
+		open(OUT, $file)	or return "$file: $!";
+		my $r = print OUT $value;
+		close(OUT);		return ($r ? '' : "write failed: $!");
+	} # If we get here, we're doing file-to-value case.
+	open(IN, $file)		or return "$file: $!";
+	local $/;		$_[1] = <IN>;	# slurp mode (entire file)
+	close(IN);		return '';
+}
+
 #### end boilerplate
 
 use File::ANVL qw(:all);	# import everything in EXPORT_OK
@@ -121,7 +133,7 @@ i:j
 
 ';
 
-my $x = `echo "$recstream" > $td/file`;
+my $x = filval(">$td/file", $recstream);
 open "IN", "< $td/file"		or die "couldn't open $td/file";
 
 my ($linenum, $rec, $wslines, $rrlines, @newlines);
@@ -153,7 +165,7 @@ $rec = trimlines($rec, \$wslines, \$rrlines);
 is $rec, undef, 'fourth getlines call hits almost eof (blank record)';
 $linenum += $wslines;	# where next rec would start if there was one
 
-is $linenum-1, 18, 'getlines has returned total of 18 lines';
+is $linenum-1, 17, 'getlines has returned total of 17 lines';
 
 is $rec, undef, 'fifth getlines call hits real eof';
 
@@ -178,8 +190,9 @@ like $x, qr/record 3, line 13/, 'stdin test for getlines (with anvl)';
 
 $x = `$cmd --verbose --comments $td/file $td/file $td/file`;
 like $x, qr{
-line\ 4 .* line\ 22 .* line\ 27 .* line\ 31 .* line\ 40 .*
+line\ 4 .* line\ 21 .* line\ 26 .* line\ 30 .* line\ 38 .*
 }sx, '3-file test for getlines (with anvl)';
+# XXXXXXXXX failing because of File::Value problem above
 
 remove_td();
 # remove_td();
@@ -217,7 +230,7 @@ b: McCartney, Paul, Sir,,
 c: Health and Human Services, United States Government
 	Department of, The,,
 ';
-my $x = `echo "$recstream" > $td/file`;
+my $x = filval(">$td/file", $recstream);
 
 $x = `$cmd --invert $td/file`;
 is $x, "a: Hu Jintao\nb: Sir Paul McCartney\nc: The United States Government Department of Health and Human Services\n\n",
@@ -253,7 +266,7 @@ c: of
 e: the
 g: party
 ';
-my $x = `echo "$recstream" > $td/file`;
+my $x = filval(">$td/file", $recstream);
 
 $x = `$cmd --find 'the' $td/file`;
 like $x, qr/e: the.*\n\n.*g: the.*\n\n.*e: the/s,

@@ -66,7 +66,7 @@ sub om_opt_defaults { return {
 }
 
 sub new {
-	my $class = shift;
+	my $class = shift;	# XXX undefined depending on how called
 	my $self = om_opt_defaults();
 	my $format = lc shift;
 	if ($format) {

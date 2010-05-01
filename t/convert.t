@@ -39,6 +39,18 @@ sub remove_td {		# remove $td but make sure $td isn't set to "."
 	$@			and die "$td: couldn't remove: $@";
 }
 
+# Abbreviated version of "raw" File::Value::file_value()
+sub filval { my( $file, $value )=@_;	# $file must begin with >, <, or >>
+	if ($file =~ /^\s*>>?/) {
+		open(OUT, $file)	or return "$file: $!";
+		my $r = print OUT $value;
+		close(OUT);		return ($r ? '' : "write failed: $!");
+	} # If we get here, we're doing file-to-value case.
+	open(IN, $file)		or return "$file: $!";
+	local $/;		$_[1] = <IN>;	# slurp mode (entire file)
+	close(IN);		return '';
+}
+
 #### end boilerplate
 
 use File::ANVL;
@@ -52,7 +64,9 @@ my $recstream = "a: b
 c: d
 ";
 
-$x = `echo "$recstream" | $cmd --format xml`;
+$x = filval(">$td/file", $recstream);
+#$x = `echo "$recstream" | $cmd --format xml`;
+$x = `$cmd --format xml < $td/file`;
 like $x, qr{
 <recs>\n\s*
  <rec>\n\s*
@@ -60,20 +74,21 @@ like $x, qr{
   <c>d</c>\n\s*
  </rec>\n\s*
 </recs>\s*
-}xs, 'basic single record anvl2xml conversion';
+}xs, 'basic single record anvl2xml conversion (stdin)';
 
-$x = `echo "$recstream" | $cmd --format turtle`;
+$x = `$cmd --format turtle $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <b>
     erc:a """b""" ;
     erc:c """d""" .
 
-', 'basic single record anvl2turtle conversion';
+', 'basic single record anvl2turtle conversion (file arg)';
 
 $recstream .= "#note to self
 ";
+$x = filval(">$td/file", $recstream);
 
-$x = `echo "$recstream" | $cmd --comment --format xml`;
+$x = `$cmd --comment --format xml $td/file`;
 like $x, qr{
 <rec>\n\s*
  <a>b</a>\n\s*
@@ -82,7 +97,7 @@ like $x, qr{
 </rec>\n\s*
 }xs, 'anvl2xml conversion with comment';
 
-$x = `echo "$recstream" | $cmd --comment -m turtle --subjelpat '^c\$'`;
+$x = `$cmd --comment -m turtle --subjelpat '^c\$' $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <d>
     erc:a """b""" ;
@@ -96,8 +111,9 @@ $recstream .= "e: f
 	g
     h
 ";
+$x = filval(">$td/file", $recstream);
 
-$x = `echo "$recstream" | $cmd -m XML`;
+$x = `$cmd -m XML $td/file`;
 like $x, qr{
 <rec>\n\s*
 <a>b</a>\n\s*
@@ -106,7 +122,7 @@ like $x, qr{
 </rec>\n\s*
 }xs, 'anvl2xml with multi-line element, uppercase XML, stripped comment';
 
-$x = `echo "$recstream" | $cmd --format tURtlE --comments`;
+$x = `$cmd --format tURtlE --comments $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <b>
     erc:a """b""" ;
@@ -118,8 +134,9 @@ is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 ', 'anvl2turtle with multi-line element, crazy case tURtlE, "--comments"';
 
 $recstream .= "i: j k";
+$x = filval(">$td/file", $recstream);
 
-$x = `echo "$recstream" | $cmd --form xml`;
+$x = `$cmd --form xml $td/file`;
 like $x, qr{
 <a>b</a>\n\s*
 <c>d</c>\n\s*
@@ -129,7 +146,7 @@ like $x, qr{
 </recs>\n\s*
 }xs, 'anvl2xml with non-newline-terminated record';
 
-$x = `echo "$recstream" | $cmd -m turtle --comm`;
+$x = `$cmd -m turtle --comm $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <b>
     erc:a """b""" ;
@@ -145,8 +162,9 @@ $recstream .= "
 identifier:
 	sujet
 ";
+$x = filval(">$td/file", $recstream);
 
-$x = `echo "$recstream" | $cmd --format xml`;
+$x = `$cmd --format xml $td/file`;
 like $x, qr{
 <a>b</a>\n\s*
 <c>d</c>\n\s*
@@ -157,7 +175,7 @@ like $x, qr{
 </recs>\n\s*
 }xs, 'anvl2xml with identifier element starting on continuation line';
 
-$x = `echo "$recstream" | $cmd --format turtle --predns http://purl.org/k1.1/`;
+$x = `$cmd --format turtle --predns http://purl.org/k1.1/ $td/file`;
 is $x, '@prefix erc: <http://purl.org/k1.1/> .
 <sujet>
     erc:a """b""" ;
@@ -177,8 +195,9 @@ cc: d
 ff: g
 h: i
 ";					# 3 ANVL records
+$x = filval(">$td/file", $recstream);
 
-$x = `echo "$recstream" | $cmd --verbose --format anvl --comments`;
+$x = `$cmd --verbose --format anvl --comments $td/file`;
 is $x, '# from record 1, line 2
 aa: b
 
@@ -191,7 +210,7 @@ h: i
 
 ', 'anvl2anvl with 3 input records and 3 verbose output records';
 
-$x = `echo "$recstream" | $cmd --verbose --format json --comments`;
+$x = `$cmd --verbose --format json --comments $td/file`;
 is $x, '[
   { "#": "from record 1, line 2",
     "aa": "b"
@@ -206,7 +225,7 @@ is $x, '[
 ]
 ', 'anvl2json with 3 input records and 3 verbose output records';
 
-$x = `echo "$recstream" | $cmd --verbose --format plain`;
+$x = `$cmd --verbose --format plain $td/file`;
 is $x, '# from record 1, line 2
 b
 
@@ -219,7 +238,7 @@ i
 
 ', 'anvl2plain with 3 input records and 3 verbose output records';
 
-$x = `echo "$recstream" | $cmd --verbose --format xml`;
+$x = `$cmd --verbose --format xml $td/file`;
 like $x, qr{
 <recs>\n\s*
 <rec>\s*<!--\ from\ record\ 1,\ line\ 2.*
@@ -228,7 +247,7 @@ like $x, qr{
 </recs>\n\s*
 }xs, 'anvl2xml with 3 input records and 3 verbose output records';
 
-$x = `echo "$recstream" | $cmd --verbose --format turtle`;
+$x = `$cmd --verbose --format turtle $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 # from record 1, line 2
 <b>
@@ -257,8 +276,9 @@ erc: another | erc | how | can
 # hmm
 zaf: not empty
 ";
+$x = filval(">$td/file", $recstream);
 
-$x = `echo "$recstream" | $cmd --format json`;
+$x = `$cmd --format json $td/file`;
 is $x, '[
   {
     "foo": "",
@@ -285,7 +305,7 @@ is $x, '[
 ]
 ', 'anvl2json with 2 short form ERCs in one oddly formed ERC';
 
-$x = `echo "$recstream" | $cmd --format plain`;
+$x = `$cmd --format plain $td/file`;
 is $x, 'ab
 cd
 ef
@@ -307,7 +327,7 @@ not empty
 # yyy dunno if that's actually the best plain text conversion??
 #     it strips blank lines
 
-$x = `echo "$recstream" | $cmd --co --format xml`;
+$x = `$cmd --co --format xml $td/file`;
 like $x, qr{
 <rec>\n\s*
 <foo></foo>\n\s*
@@ -329,7 +349,7 @@ like $x, qr{
 <zaf>.*
 }xs, 'anvl2xml with 2 short form ERCs in one oddly formed ERC';
 
-$x = `echo "$recstream" | $cmd --co --format turtle`;
+$x = `$cmd --co --format turtle $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <gh>
     erc:foo """""" ;
@@ -360,7 +380,9 @@ is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 $recstream = 'erc:
   aa|bb|cc|
   dd';
-$x = `echo "$recstream" | $cmd --comments -m turtle`;
+$x = filval(">$td/file", $recstream);
+
+$x = `$cmd --comments -m turtle $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <dd>
     erc:erc """""" ;
@@ -378,7 +400,8 @@ $recstream = 'erc:
    
   a
   ';		# there are no empty lines (but lines with spaces)
-$x = `echo "$recstream" | $cmd --comments -m turtle`;
+$x = filval(">$td/file", $recstream);
+$x = `$cmd --comments -m turtle $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <a>
     erc:erc """""" ;
@@ -392,8 +415,9 @@ is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 $recstream = '# A way to kernel knowledge.
 erc: Kunze, John A. | A Metadata Kernel for Electronic Permanence
      | 20011106 | http://journals.tdl.org/jodi/article/view/43';
+$x = filval(">$td/file", $recstream);
 
-$x = `echo "$recstream" | $cmd --comments -m turtle`;
+$x = `$cmd --comments -m turtle $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <http://journals.tdl.org/jodi/article/view/43>
 # A way to kernel knowledge.
@@ -406,7 +430,7 @@ is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 
 ', 'anvl2turtle with true ERC and initial comment';
 
-$x = `echo "$recstream" | $cmd --comments -m anvl`;
+$x = `$cmd --comments -m anvl $td/file`;
 is $x, '# A way to kernel knowledge.
 erc:
 who: Kunze, John A.
@@ -416,7 +440,7 @@ where: http://journals.tdl.org/jodi/article/view/43
 
 ', 'anvl2anvl with short true ERC and initial comment';
 
-$x = `echo "$recstream" | $cmd`;
+$x = `$cmd $td/file`;
 is $x, 'erc:
 who: Kunze, John A.
 what: A Metadata Kernel for Electronic Permanence
@@ -426,7 +450,8 @@ where: http://journals.tdl.org/jodi/article/view/43
 ', 'anvl2anvl as default with short ERC (pod example)';
 
 $recstream = 'erc: a | b | c | d';
-$x = `echo "$recstream" | $cmd --format json`;
+$x = filval(">$td/file", $recstream);
+$x = `$cmd --format json $td/file`;
 is $x, '[
   {
     "erc": "",
@@ -441,7 +466,8 @@ is $x, '[
 $recstream = 'a: b
 #note to self
 c: d';
-$x = `echo "$recstream" | $cmd --verbose --comments -m xml`;
+$x = filval(">$td/file", $recstream);
+$x = `$cmd --verbose --comments -m xml $td/file`;
 is $x, '<recs>
   <rec>   <!-- from record 1, line 1 -->
     <a>b</a>

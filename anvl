@@ -203,6 +203,11 @@ with this style sheet
 Preserve comments during B<--format> conversion, with pseudo-comments
 produced depending on the target format.
 
+=item B<--find> I<regexp>
+
+Only output records that match the regular expression, I<regexp>.
+(The match is done before any expansion of short form ERCs.)
+
 =item B<-m> I<format>, B<--format> I<format>
 
 Convert to the given I<format>, currently one of "ANVL" (default), "XML",
@@ -221,7 +226,7 @@ tried.  For example, the values
      McCartney, Paul, Sir,,
      Hu Jintao,
 
-convert to the following natural word ordering
+convert to the following natural word orderings
 
      Pat Smith
      Sir Paul McCartney
@@ -243,6 +248,12 @@ Print full documentation.
 
 For Turtle conversion, use the given I<namespace> for assertion Predicates,
 by default, "http://purl.org/kernel/elements/1.1/".
+
+=item B<--show> I<regexp>
+
+Show only those elements matching the regular expression, I<regexp>.
+Matching, which can include labels and values, is done against a string
+(re-)constructing the element as a "I<label>: I<value>".
 
 =item B<--subjelpat> I<pattern>
 
