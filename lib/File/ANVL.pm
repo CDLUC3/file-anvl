@@ -13,7 +13,7 @@ use constant ANVLR	=> 2;
 use constant ANVLS	=> 3;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-0-23 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-0-24 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
