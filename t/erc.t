@@ -102,7 +102,7 @@ is $x, 'who	h1
 where	h4
 ', 'exact inverse mapping';
 
-$x = `$cmd get 'who\$'`;
+$x = `$cmd get "who\$"`;
 like $x, qr/about-who.*meta-who.*support-who.*who	h1/s,
 	'inexact inverse mapping';
 

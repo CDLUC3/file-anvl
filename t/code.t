@@ -134,7 +134,7 @@ i:j
 ';
 
 my $x = filval(">$td/file", $recstream);
-open "IN", "< $td/file"		or die "couldn't open $td/file";
+open "IN", "<$td/file"		or die "couldn't open $td/file";
 
 my ($linenum, $rec, $wslines, $rrlines, @newlines);
 
@@ -169,6 +169,8 @@ is $linenum-1, 17, 'getlines has returned total of 17 lines';
 
 is $rec, undef, 'fifth getlines call hits real eof';
 
+close(*IN);
+
 #is trimlines("a:b", \$wslines), "a:b\n\n",
 #	'trimlines adds one newline, one optional arg';
 #
@@ -185,14 +187,13 @@ is trimlines("\n\n  \n  ", \$wslines, \$rrlines), undef,
 is $wslines, 3, 'trimlines returns undef but still counted blank lines';
 is $rrlines, 0, 'trimlines returns undef but still defined record linecount';
 
-$x = `cat $td/file | $cmd --verbose --comments`;
+$x = `$cmd --verbose --comments < $td/file`;
 like $x, qr/record 3, line 13/, 'stdin test for getlines (with anvl)';
 
 $x = `$cmd --verbose --comments $td/file $td/file $td/file`;
 like $x, qr{
 line\ 4 .* line\ 21 .* line\ 26 .* line\ 30 .* line\ 38 .*
 }sx, '3-file test for getlines (with anvl)';
-# XXXXXXXXX failing because of File::Value problem above
 
 remove_td();
 # remove_td();
@@ -236,7 +237,7 @@ $x = `$cmd --invert $td/file`;
 is $x, "a: Hu Jintao\nb: Sir Paul McCartney\nc: The United States Government Department of Health and Human Services\n\n",
 	'invert 3 values';
 
-remove_td
+remove_td();
 }
 
 {	# --find and --show
@@ -268,15 +269,15 @@ g: party
 ';
 my $x = filval(">$td/file", $recstream);
 
-$x = `$cmd --find 'the' $td/file`;
+$x = `$cmd --find "the" $td/file`;
 like $x, qr/e: the.*\n\n.*g: the.*\n\n.*e: the/s,
 	'find 3 records';
 
-$x = `$cmd --show 'the' $td/file`;
+$x = `$cmd --show "the" $td/file`;
 is $x, "e: the\n\n\ng: the\n\ne: the\n\n", 'show 3 lines in 4 records';
 
-$x = `$cmd --find '(now|aid)' --show '^g' $td/file`;
+$x = `$cmd --find "(now|aid)" --show "^g" $td/file`;
 is $x, "g: time\n\ng: party\n\n", 'find and show with regexes';
 
-remove_td
+remove_td();
 }

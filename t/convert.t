@@ -97,7 +97,8 @@ like $x, qr{
 </rec>\n\s*
 }xs, 'anvl2xml conversion with comment';
 
-$x = `$cmd --comment -m turtle --subjelpat '^c\$' $td/file`;
+# !!!! Windows compat: use " quotes, not ' quotes
+$x = `$cmd --comment -m turtle --subjelpat "^c\$" $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <d>
     erc:a """b""" ;

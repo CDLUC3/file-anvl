@@ -227,12 +227,13 @@ $x = $om->DESTROY();
 like $x, qr{</rec>.*</recs>}s,
 	'XML DESTROY auto-invokes close rec and close stream';
 
-$x = `perl -Mblib -e 'use File::OM; my \$x = File::OM->new("ANVL", { outhandle => *STDOUT }); \$x->elem("a", "b");'`;
+# !!!!!!! must not use ' for windows compat, use " instead
+$x = `perl -Mblib -e "use File::OM; my \\\$x = File::OM->new('ANVL', { outhandle => *STDOUT }); \\\$x->elem('a', 'b');"`;
 is $x, 'a: b
 
 ',	'ANVL implied DESTROY and STDOUT';
 
-$x = `perl -Mblib -e 'use File::OM; my \$x = File::OM->new("json", { outhandle => *STDOUT }); \$x->elem("a", "b");'`;
+$x = `perl -Mblib -e "use File::OM; my \\\$x = File::OM->new('json', { outhandle => *STDOUT }); \\\$x->elem('a', 'b');"`;
 is $x, '[
   {
     "a": "b"
@@ -240,19 +241,19 @@ is $x, '[
 ]
 ',	'JSON implied DESTROY and STDOUT';
 
-$x = `perl -Mblib -e 'use File::OM; my \$x = File::OM->new("Plain", { outhandle => *STDOUT }); \$x->elem("a", "b");'`;
+$x = `perl -Mblib -e "use File::OM; my \\\$x = File::OM->new('Plain', { outhandle => *STDOUT }); \\\$x->elem('a', 'b');"`;
 is $x, 'b
 
 ',	'Plain implied DESTROY and STDOUT';
 
-$x = `perl -Mblib -e 'use File::OM; my \$x = File::OM->new("Turtle", { outhandle => *STDOUT }); \$x->elem("a", "b");'`;
+$x = `perl -Mblib -e "use File::OM; my \\\$x = File::OM->new('Turtle', { outhandle => *STDOUT }); \\\$x->elem('a', 'b');"`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <default>
     erc:a """b""" .
 
 ',	'Turtle implied DESTROY and STDOUT';
 
-$x = `perl -Mblib -e 'use File::OM; my \$x = File::OM->new("xml", { outhandle => *STDOUT }); \$x->elem("a", "b");'`;
+$x = `perl -Mblib -e "use File::OM; my \\\$x = File::OM->new('xml', { outhandle => *STDOUT }); \\\$x->elem('a', 'b');"`;
 is $x, '<recs>
   <rec>
     <a>b</a>
