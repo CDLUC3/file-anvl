@@ -1,5 +1,10 @@
 package File::ANVL;
 
+# XXXXXxxxx make adding a value policy-driven, eg,
+# "add" could mean (a) replace, (b) push on end array,
+# (c) push on start of array, (d) string concatenation,
+# (d) error.
+
 use 5.006;
 use strict;
 use warnings;
@@ -13,7 +18,7 @@ use constant ANVLR	=> 2;
 use constant ANVLS	=> 3;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-0-26 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-0-28 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -21,7 +26,7 @@ our @ISA = qw(Exporter);
 our @EXPORT = qw();
 
 our @EXPORT_OK = qw(
-	anvl_recarray
+	anvl_recarray anvl_arrayhash
 	anvl_name_naturalize
 	anvl_rechash anvl_valsplit
 	erc_anvl_expand_array kernel_labels
@@ -197,7 +202,9 @@ sub anvl_recsplit { my( $record, $r_elems, $strict )=@_;
 # xxxxxxxx respond to 'comments' (def. off), 'autoindent' (def. on),
 #   'anvlr' (def. off), 'granvl' ?
 
-# returns "" on success, or "error: ..." or "warning: ..."
+# This is the closest thing to a reference implementation of an ANVL
+# record parser.
+# It returns "" on success, or "error: ..." or "warning: ..."
 
 sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 
@@ -236,22 +243,33 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 
 	# xxx what about $anvl_mode ne ANVLR and??
 
-	# remove comments unless 'comments' is in effect
-	$$o{comments} or		# default is to remove comments
-		s/^#.*\n//gm;		# up to and including final \n
-
+	# Now we synthesize stuff (line numbers and pseudo-element names for
+	# any comments) in order to create a uniform structure on each line,
+	# so that we can finally call 'split' to bust apart that structure
+	# into a Perl array in which every 3 elements corresponds to
+	#     1. a line number,
+	#     2. a label, and
+	#     3. a value.
+	#
+	# First insert a line number and ":" in front of each line.
+	#
 	s/^/ $linenum++ . ":" /gem;	# put a line number on each line
 
 	# Now put a pseudo-element name '#:' on each comment (if any) and
 	# change first ':' separator to '#' for positive identification.
 	# Eg, '# foo' on line 3 becomes '3##:# foo', which conforms to
 	# the eventual split pattern we rely on (at end).
+	#
+	$$o{comments} and		# if we're keeping comments
+		s/^(\d+):#/$1##:/gm, 1
+	                #    ^^^
+	                #    123
+			# 1=separator, 2=pseudo-name,
+			# 3=original value minus '#' starts after :
 
-#split /\n*^(\d+[:#])(?:(#):#|([^\s:][^:]*):\s*)/m
-	s/^(\d+):#/$1##:/gm;	
-	#            ^^^
-	#            123
-	# 1=separator, 2=pseudo-name, 3=original value minus '#' starts after :
+	or				# else completely delete comments
+		s/^\d+:#.*\n//gm	# up to and including final \n
+	;
 
 	my $msg = "";			# default return message
 
@@ -268,7 +286,7 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 	my $indented = s/^(\d+:)([^\s:][^:]*)$/$1 $2/gm;
 	if ($indented) {
 		unless ($$o{autoindent}) {
-			@$r_elems = undef;
+			@$r_elems = undef;	# XXXXX isn't this too much?
 			return "error: $indented unindented value line(s)";
 		}
 		$msg = "warning: indenting $indented value line(s)";
@@ -292,14 +310,23 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 	# splits line beginning  ..... xxx
 	#
 	s/\n$//;			# strip final \n
-	@$r_elems = ("ANVL", "beta",	# third elem provided by
-		# unneeded first element resulting from the split
+	@$r_elems = ('', 'ANVL',	# 3rd elem of 1st triple is
+		# provided by first element resulting from the split
 
 		split /\n*^(\d+[:#])([^\s:][^:]*):/m
 
 	);
-	#(undef, @$r_elems) = split /\n*^([^\s:][\w 	]*):\s*/m;
 
+	# If there was a value with no label at the start of the record,
+	# we deem that interesting enough to keep even though it's not
+	# ANVL-compliant; the caller can prevent this by turning off
+	# 'autoindent', the processing for which will either flag this as
+	# an error or will have inserted one space in front of the value.
+	#
+	$$r_elems[2] =~ /^(\d+): (.*)/ and
+		($$r_elems[0], $$r_elems[2]) = ($1, $2);
+
+	#(undef, @$r_elems) = split /\n*^([^\s:][\w 	]*):\s*/m;
 	# yyy an approach once considered but not used
 	# $num = $.;	# linenum
 	# s/^/ $num++ . ":" /e	while (/\n/g);
@@ -309,6 +336,51 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 	# /^#.*?\n[^#]/s        # (?=lookahead)
 	#return "_=$_\n" . join(", ", @$r_elems);	# to check results
 
+	return $msg;
+}
+
+# XXXXXX for consolidating a:b and a:c into a:b;c, MAJOR constraint
+#        is that b and c CANNOT contain '|' or we refuse...
+
+sub anvl_arrayhash { my( $r_elems, $r_hash, $first_only )=@_;
+
+	ref($r_elems) ne "ARRAY" and
+		return "error: 1st arg must reference an array";
+	ref($r_hash) ne "HASH" and
+		return "error: 2nd arg must reference a hash";
+	defined($first_only)	or $first_only = 0;
+
+	my $num_elems = scalar @$r_elems;
+	$num_elems % 3 != 0 and
+		return "error: input array length must be a multiple of 3";
+
+	$num_elems < 1		and return "";	# no elements, we're done
+	
+	my $msg = '';			# xxx needed?
+	my ($name, $value, $n, $v);
+
+	# We know there must be at least 3 elements, so it's safe to check
+	# the special first triple (index 2 is the only one we look at now)
+	# for an initial unlabeled record element (non-standard ANVL).
+	# If we find something, we make up the name, '_'.
+	#
+	if ($$r_elems[2]) {		# first triple is special
+		$name = '_';
+		! defined $$r_hash{$name} and
+			$$r_hash{$name} = [ 0 ]		# initialize array
+		or
+			push @{ $$r_hash{$name} }, 0	# add to array
+	}
+
+	for ($n = 3; $n < $num_elems; $n += 3) {
+
+		$name = $$r_elems[$n + 1];
+		! defined $$r_hash{$name} and
+			$$r_hash{$name} = [ $n ]	# initialize array
+		or
+			push @{ $$r_hash{$name} }, $n	# add to array
+		;
+	}
 	return $msg;
 }
 
@@ -365,23 +437,36 @@ sub anvl_rechash { my( $record, $r_hash, $strict )=@_;
 		$name = shift @elems;
 		last	unless defined $name; 	# nothing left
 		$value = shift @elems;
-		if (defined $$r_hash{$name}) {
-
-			# XXXXXxxxx make adding a value policy-driven, eg,
-			# "add" could mean (a) replace, (b) push on end array,
-			# (c) push on start of array, (d) string concatenation,
-			# (d) error.
-			# xxx should anvl_rechash save line numbers?
-			# xxx should anvl_recsplit save line numbers?
-
-			my $v = $$r_hash{$name};	# add to current
-			$v = [ $v ]		# make an array if currently
-				unless ref $v;	# there's only one value
-			push @$v, $value;
-		}
-		else {
+		if (! defined $$r_hash{$name}) {
+			# Nothing there, so store scalar and continue.
 			$$r_hash{$name} = $value;	# 1st value (non-array)
+			next;
 		}
+		# If we get here there's something's already there.
+		# Don't overwrite if we're in $strict mode.
+		# xxx document this
+		#
+		$strict		and next;	# don't overwrite
+
+		# XXXXXxxxx make adding a value policy-driven, eg,
+		# "add" could mean (a) replace, (b) push on end array,
+		# (c) push on start of array, (d) string concatenation,
+		# (d) error.
+		# xxx should anvl_rechash save line numbers?
+		# xxx should anvl_recsplit save line numbers?
+
+		# Whatever is there could be a scalar or an array reference.
+		# If not a reference, create an anonymous array, put a
+		# scalar into it, and refer to the array.
+		#
+		my $v = $$r_hash{$name};	# add to current
+		$v = [ $v ]		# make an array if currently
+			unless ref $v;	# there's only one value
+
+		# If we get here, we have a reference to an array,
+		# possibly empty.  Either way, we can push onto it.
+		#
+		push @$v, $value;
 	}
 	return $msg;
 }
@@ -587,24 +672,25 @@ sub erc_anvl_expand_array { my( $r_elems )=@_;
 
 # xxx anvl_fmt not consistent with om_anvl!
 
-sub anvl_om {
+sub anvl_om { my( $om, $o )		= (shift, shift);
 
-	my $om = shift;			# output formatting object
 	return "anvl_om: 1st arg not an OM object"
 		if ref($om) !~ /^File::OM::/;
 	my $p = $om->{outhandle};	# whether 'print' status or small
+	$o ||= anvl_opt_defaults();
 
-	my $o = shift ||		# output options
-		anvl_opt_defaults();
 	my $s = '';			# output strings are returned to $s
 	my $st = $p ? 1 : '';		# returns (stati or strings) accumulate
-	my ($msg, $anvlrec, $lineno, $name, $value, $pat);
+	my ($msg, $anvlrec, $lineno, $name, $value, $pat, $n, $nmax);
+	my (%rechash, $ne, $nemax, $elem_name);	# for alt. element ordering
+	my $r_elem_order = $$o{elem_order};
 
 	$s = $om->ostream();		# open stream
 
-	# This next line is a fast (if cryptic) way to accumulate $om->method
-	# calls.  Used after each method call, it concatenates strings or
-	# ANDs up print statuses depending on the outhandle setting.
+	# This next line is a fast and compact (if cryptic) way to
+	# accumulate $om->method calls.  Used after each method call, it
+	# concatenates strings or ANDs up print statuses, depending on the
+	# outhandle setting.  It makes several appearances in this routine.
 	#
 	$p and ($st &&= $s), 1 or ($st .= $s);	# accumulate method returns
 
@@ -626,7 +712,7 @@ sub anvl_om {
 		$recnum++;		# increment record counter
 
 		$msg = anvl_recarray($anvlrec, $r_elems, $startline, $o);
-		$msg		and return "anvl_recarray: $msg";
+		$msg =~ /^error/	and return "anvl_recarray: $msg";
 
 		# NB: apply 'find' here before possible expansion, which
 		# means that a pattern like "who:\s*smith" won't work on
@@ -659,27 +745,69 @@ sub anvl_om {
 		# outputting json separators (eg, no comma if $recnum eq 1)
 		# or record numbers in comments (eg, if $$o{verbose}).
 		# $startline is useful for parser diagnostics (eg, "error
-		# on line 5").
+		# on line 5").  $r_elems and $r_elem_order are needed for
+		# discovering what elements will populate CSV/PSV records.
 		#
-		$s = $om->orec($recnum, $startline, $r_elems);
+		$s = $om->orec($recnum, $startline, $r_elems, $r_elem_order);
 		$p and ($st &&= $s), 1 or ($st .= $s);
 
-		# Now discard first 3 elements (ANVL record preamble).
-		#
-		shift(@$r_elems); shift(@$r_elems); shift(@$r_elems);
+		if ($r_elem_order) {
+			undef %rechash;		# don't want prior indices
+			($msg = anvl_arrayhash($r_elems, \%rechash)) and
+				return "anvl_arrayhash: $msg";
+			$ne = -1;		# index into $$r_elem_order
+			$nemax = scalar @$r_elem_order;
+		} else {
+			$n = 			# index into $$r_elems
+				$$r_elems[2]	# if a no-label value starts
+					? -3	# rec, make sure to output it,
+					: 0;	# else skip it (normal)
+			$nmax = scalar @$r_elems;
+		}
 
-		$elemnum = 0;	# count of true elements (not comments)
+		$elemnum = 0;			# true elements, not comments
+		undef $name;
 		while (1) {
-			$lineno = shift(@$r_elems);
-			$name = shift(@$r_elems);
-			$value = shift(@$r_elems) || "";
 
-			last	unless defined $name; 	# end of record
+			# Select next candidate element.  If we need to
+			# output elements in a certain order, consult the
+			# hash; otherwise, just use "found" order.
+			#
+			if ($r_elem_order) {	# use specified order
+
+				$ne++;
+				$ne >= $nemax		and last;
+
+				# For CSV and PSV, the element name at this
+				# position may be deliberately undefined, or
+				# may correspond to a named element missing
+				# in this record, in which case we skip it.
+				#
+				$elem_name = $r_elem_order->[$ne];
+				! defined($elem_name) || ! defined(
+					#XXX ignore multiple instances for now
+					$n = $rechash{$elem_name}->[0]
+				    ) and
+					# for CSV/PSV, output an empty element
+					next;
+
+			} else {		# use natural array order
+				$n += 3;
+				$n >= $nmax		and last;
+			}
+			# If we get here, $n is defined.
+
+			$lineno = $$r_elems[$n];
+			$name = $n < 3		# for special first triple
+				? '_'		# use synthesized name '_'
+				: $$r_elems[$n + 1];	# else real name
+			$value = $$r_elems[$n + 2] || "";
 
 			$elemnum++		unless $name eq '#';
 
 			# Skip if 'show' given and not requested.
 			$$o{show} and ("$name: $value" !~ /$$o{show}/m) and
+				(undef $name),	# cause elem to be skipped
 				next;
 
 			# Instead of $om->oelem, $om->celem, $om->contelem, 
@@ -688,10 +816,13 @@ sub anvl_om {
 			#
 			$$o{invert} and $value =~ /,\s*$/ and
 				$value = anvl_name_naturalize($value);
-			$s = $om->elem($name, $value, $lineno);
-
-			$p and ($st &&= $s), 1 or ($st .= $s);
 		}
+		continue {
+			$s = $om->elem($name, $value, $lineno);
+			$p and ($st &&= $s), 1 or ($st .= $s);
+			undef $name;		# clean the slate
+		}
+
 		$s = $om->crec($recnum);
 		$p and ($st &&= $s), 1 or ($st .= $s);
 		$startline += $rrlines;
@@ -762,42 +893,47 @@ File::ANVL - A Name Value Language routines
  anvl_recarray(        # split $record into array of lineno-name-value
          $record,      # triples, first triple being <anvl, beta, "">
          $r_elems,     # reference to returned array
-         $lineno,     # starting line number (default 1)
+         $lineno,      # starting line number (default 1)
          $opts );      # options/default, eg, comments/0, autoindent/1
 
  erc_anvl_expand_array(# change short ERC ANVL array to long form ERC
          $r_elems );   # reference to array to modify in place
 
+ anvl_arrayhash(       # hash indices from recarray or expand_array
+         $r_elems,     # reference to original array (not modified)
+         $r_hash );    # reference to hash (you undef to initialize)
+
  anvl_valsplit(        # split ANVL value into an array of subvalues
          $value,       # input value; arg 2 is reference to returned
          $r_svals );   # array of arrays of returned values
 
+ anvl_decode( $str );  # decode ANVL-style %xy chars in string
+
+ anvl_name_naturalize( # convert name from sort-friendly to natural
+         $name );      # word order using ANVL inversion points
+
+ anvl_om(              # read and process records from *ARGV
+         $om,          # a File::OM formatting object
+   {                   # a hash reference to various options
+   autoindent => 0,    # don't (default do) correct sloppy indention
+   elem_order => 0,    # ordered element name list (default all) to output
+   comments => 1,      # do (default don't) preserve input comments
+   verbose => 1,       # output record and line numbers (default don't)
+   ... } );            # other options listed later
+
+ anvl_opt_defaults();  # return hash reference with factory defaults
+
+ *DEPRECATED*
  anvl_rechash(         # split ANVL record into hash of elements
          $record,      # input record; arg 2 is reference to returned
          $r_hash,      # hash; a value is scalar, or array of scalars
          $strict );    # if more than one element shares its name
 
- anvl_decode( $str );     # decode ANVL-style %xy chars in string
-
- anvl_name_naturalize(   # convert name from sort-friendly to natural
-         $name );        # word order using ANVL inversion points
-
- anvl_om(                # read and process records from *ARGV
-         $om,            # a File::OM formatting object
-   {                     # a hash reference to various options
-   autoindent => 0,      # don't (default do) correct sloppy indention
-   comments => 1,        # do (default don't) preserve input comments
-   verbose => 1,         # output record and line numbers (default don't)
-   ... } );              # other options listed later
-
- anvl_opt_defaults();    # return hash reference with factory defaults
-
- *DEPRECATED*
- anvl_recsplit(         # split record into array of name-value pairs;
-         $record,       # input record; arg 2 is reference to returned
-         $r_elems,      # array; optional arg 3 (default 0) requires
-         $strict );     # properly indented continuation lines
- anvl_encode( $str );   # ANVL-encode string
+ anvl_recsplit(        # split record into array of name-value pairs;
+         $record,      # input record; arg 2 is reference to returned
+         $r_elems,     # array; optional arg 3 (default 0) requires
+         $strict );    # properly indented continuation lines
+ anvl_encode( $str );  # ANVL-encode string
 
  *REPLACED*
  # instead of anvl_fmt use File::OM::ANVL object's 'elems' method
@@ -812,7 +948,8 @@ This is documentation for the B<ANVL> Perl module, which provides a
 general framework for data represented in the ANVL format.  ANVL (A Name
 Value Language) represents elements in a label-colon-value format similar
 to email headers.  Specific conversions, based on an "output multiplexer"
-L<File::OM>, are possible to XML, Turtle, JSON, and Plain unlabeled text.
+L<File::OM>, are possible to XML, Turtle, JSON, CSV, and PSV (Pipe
+Separated Value), and Plain unlabeled text.
 
 The B<OM> package can also be used to build records from scratch in ANVL
 or other the formats.  Below is an example of how to create a particular
@@ -853,34 +990,38 @@ to accurate line counts, and a familiar "loop until EOF" paradigm, as in
 
      while (defined trimlines(getlines(), \$wslcount, \$rrlcount)) ...
 
-The C<anvl_recarray()> function splits an ANVL record into elements,
-returning them via the array reference given as the second argument. Each
-returned element is a triple consisting of line number, name, and value.
-An optional third argument gives the starting line number (default 1).
-An optional fourth argument is a reference to a hash containing options;
-the argument { comments => 1, autoindent => 0 } will cause comments to be
-kept (stripped by default) and recoverable indention errors to be flagged
-as errors (corrected to continuation lines by default).  This function
-returns the empty string on success, or a message beginning "warning:
-..." or "error: ...".
+The C<anvl_recarray()> function splits an ANVL record into ANVL elements,
+returning them via the array reference given as the second argument.  The
+C<n>-th returned ANVL element corresponds to three Perl array elements as
+follows:
 
-The first triple of the returned array is special in that it describes
-the origin of the record; its elements are
+     INDEX   CONTENT
+     3n + 0  input file line number
+     3n + 1  n-th ANVL element name
+     3n + 2  n-th ANVL element value
 
-     INDEX   NAME        VALUE
-       0     format      original format ("ANVL", "JSON", "XML", etc)
-       1     <unused>
-       2     <unused>
+This means, for example, that the first two ANVL element names would be
+found at Perl array indices 4 and 7.  The first triple is special; array
+elements 0 and 2 are undefined unless the record begins with an unlabeled
+value (not strictly ANVL), such as,
+
+     Smith, Jo
+     home: 555-1234
+     work: 555-9876
+
+in which case they contain the line number and value, respectively. Array
+element 1 always contains a string naming the format of the input, such
+as, "ANVL", "JSON", "XML", etc.
 
 The remaining triples are free form except that the values will have been
 drawn from the original format and possibly decoded.  The first item
-("lineno") in each remaining triple is a number followed by a letter,
-such as "34:" or "6#".  The number indicates the line number (or octet
-offset, depending on the origin format) of the start of the element.  The
-letter is either ':' to indicate a real element or '#' to indicate a
-comment; if the latter, the element name has no defined meaning and the
-comment is contatined in the value.  Here's example code that reads a
-3-element record and reformats it.
+("lineno") in each remaining triple is a number followed by a character,
+for example, "34:" or "6#".  The number indicates the line number (or
+octet offset, depending on the origin format) of the start of the
+element.  The character is either ':' to indicate a real element or '#'
+to indicate a comment; if the latter, the element name has no defined
+meaning and the comment is contained in the value.  Here's example code
+that reads a 3-element record and reformats it.
 
      ($msg = File::ANVL::anvl_recarray('
      a: b c
@@ -896,6 +1037,14 @@ which prints
 
      [a <- b c]  [d <- e f]  [g <- h i]
 
+An optional third argument to C<anvl_recarray> gives the starting line
+number (default 1).  An optional fourth argument is a reference to a hash
+containing options; the argument { comments => 1, autoindent => 0 } will
+cause comments to be kept (stripped by default) and recoverable indention
+errors to be flagged as errors (corrected to continuation lines by
+default).  This function returns the empty string on success, or a
+message beginning "warning: ..." or "error: ...".
+
 C<erc_anvl_expand_array()> inspects and possibly modifies in place the
 kind of element array resulting from a call to C<anvl_recarray()>.  It
 returns the empty string on success, otherwise an error message.  This
@@ -908,20 +1057,23 @@ form, for example, expanding C<erc: a | b | c | d> into the equivalent,
      when: c
      where: d
 
+The C<anvl_arrayhash()> function takes the kind of element array
+resulting from a call to C<anvl_recarry> or C<erc_anvl_expand_array()>
+and modifies the hash reference given as the second argument by storing,
+for each element name, a list of integers corresponding to the triples
+that bear that name.  You should always C<undef>ine the hash first or you
+may see unexpected results.  So to print the value (the 2nd array element
+past the start of the triple) of the first instance (index 0) of "who",
+
+     anvl_arrayhash(\@elems, \%hash);
+     print "First who: ", $elems[ $hash{who}->[0] + 2 ], "\n";
+
 The C<anvl_valsplit()> function splits an ANVL value into sub-values 
 (svals) and repeated values (rvals), returning them as an array of arrays
 via the array reference given as the second argument.  The top-level of
 the array represents svals and the next level represents rvals.  This
 function returns the empty string on success, or a message beginning
 "warning: ..." or "error: ...".
-
-The C<anvl_rechash()> function splits an ANVL record into elements,
-returning them via the hash reference given as the second argument.  A
-hash key is defined for each element name found.  Under that key is
-stored the corresponding element value, or an array of values if more
-than one occurrence of the element name was encountered.  This function
-returns the empty string on success, or a message beginning "warning: ..."
-or "error: ...".
 
 The C<anvl_decode()> function takes an ANVL-encoded string and returns it
 after converting encoded characters to the standard representaion (e.g.,
@@ -971,11 +1123,24 @@ object creation time.
 
 Options control various aspects of reading ANVL input records.  The
 'autoindent' option (default on) causes the parser to recover if it can
-when continuation lines are not properly indented.  The 'comments'
-options (default off) causes input comments to be preserved in the
-output, format permitting.  The 'verbose' option inserts record and line
-numbers in comments.  Pseudo-comments will be created for formats that
-don't natively define comments (JSON, Plain).
+when continuation lines are not properly indented.  As a special case,
+if the first line of the record has no label, leaving 'autoindent' on
+will cause C<anvl_recarray()> to preserve it's value and line number in
+the first triple, which C<anvl_om()> will detect and pass through with
+the synthesized name '_'.
+
+The 'elem_order' option (default undefined) can be used to control which
+elements are output and their ordering.  If set to a reference to an
+array of element names, which may contain repeated names, the specified
+elements (and no others) are output in the specified order.  Normally,
+all elements present in the array are output.  Under the CSV and PSV
+formats, element order is by default inferred by the ordering of elements
+found in the first record.
+
+The 'comments' options (default off) causes input comments to be
+preserved in the output, format permitting.  The 'verbose' option inserts
+record and line numbers in comments.  Pseudo-comments will be created for
+formats that don't natively define comments (JSON, Plain).
 
 Like the individual OM methods, C<anvl_om()> returns the built string by
 default, or the return status of C<print> using the file handle supplied
@@ -1001,6 +1166,14 @@ The way C<anvl_om()> works is roughly as follows.
      ... }
      $om->cstream();                                    # close stream
 
+
+DEPRECATED: The C<anvl_rechash()> function splits an ANVL record into
+elements, returning them via the hash reference given as the second
+argument.  A hash key is defined for each element name found.  Under that
+key is stored the corresponding element value, or an array of values if
+more than one occurrence of the element name was encountered.  This
+function returns the empty string on success, or a message beginning
+"warning: ..." or "error: ...".
 
 DEPRECATED: The C<anvl_recsplit()> function splits an ANVL record into
 elements, returning them via the array reference given as the second
@@ -1035,7 +1208,7 @@ John A. Kunze I<jak at ucop dot edu>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2009-2010 UC Regents.  Open source BSD license.
+Copyright 2009-2011 UC Regents.  Open source BSD license.
 
 =head1 PREREQUISITES
 

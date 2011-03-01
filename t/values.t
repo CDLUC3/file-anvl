@@ -119,10 +119,47 @@ is scalar(@{$svals[2]}), 1, '3rd subvalue cardinality correct';
 
 is scalar(@{$svals[3]}), 1, '4th subvalue cardinality correct';
 
+$r = 'Smith, Jo
+H: 555-1234
+W: 555-9876
+W: 555-5678
+E: jsmith@example.com
+';
+$m = anvl_recarray($r, \@elems);
+is scalar(@elems), 15, 'correct elem count for record with non-standard start';
+
+is $elems[2], "Smith, Jo", 'unlabeled start captured (not really ANVL)';
+
+is $elems[0], "1", 'unlabeled start line number captured (not really ANVL)';
+
+my %rhash;
+$m = anvl_arrayhash(@elems, \%rhash);
+like $m,  qr/array/, 'bad first arg';
+
+$m = anvl_arrayhash(\@elems, %rhash);
+like $m,  qr/hash/, 'bad second arg';
+
+my $n;
+$m = anvl_arrayhash(\@elems, \%rhash);
+$n = $rhash{H}->[0];		# index of first such element triple
+is $elems[$n + 2], '555-1234', 'hash home phone';
+
+is $elems[ $rhash{W}->[0] + 2 ], '555-9876',
+	'hash work phone, first value';
+
+is $elems[ $rhash{W}->[1] + 2 ], '555-5678',
+	'hash work phone, second value';
+
+# no elem name becomes '_'
+is $elems[ $rhash{'_'}->[0] + 2 ], 'Smith, Jo',
+	'hash "" key for non-standard start';
+
+undef %rhash;		# clears out old values so we don't add to them
+
+# DEPRECATED
 $m = anvl_rechash("foo", "dummy");
 like $m, qr/hash/, 'rechash message about 2nd arg referencing a hash';
 
-my %rhash;
 $m = anvl_rechash("foo: bar", \%rhash);
 is $rhash{foo}, 'bar', 'simple one-element record hash';
 

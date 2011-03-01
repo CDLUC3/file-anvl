@@ -53,22 +53,37 @@ my %opt = (
 		print(join("\n", File::OM::listformats()), "\n"),
 		exit 0;
 
-	my $format = lc $opt{format} || 'anvl';	# given format name
-	# output formats to do: anvlr, granvl, yaml, short erc/anvl
+	# Format may be a name, optionally followed by a colon and a
+	# list of element names to be output.
+	#
+	my $format = $opt{format} || 'anvl';	# given format name
+	my $r_elem_order;
+	$format =~ /^([^:]*):\s*(.*)\s*/ and
+		($format, @$r_elem_order) = (lc($1), split(/\s*\|\s*/, $2));
+
+#	# If an element ordering is defined, change any empty element
+#	# names to the element name ("_"), which grabs any unlabeled
+#	# value that might start the record.
+#	#
+#	$r_elem_order and
+#		@$r_elem_order = map($_ || '_', @$r_elem_order);
+
+	# output formats to do: anvlr, granvl, yaml, short erc/anvl, csv
 	# XXX need a default command?  anvl_summarize?
 
 	my $anvl_opt = File::ANVL::anvl_opt_defaults();	# ref to hash
 	$$anvl_opt{comments} = $opt{comments};	# whether to keep comments
-	$$anvl_opt{verbose} = $opt{verbose};	# more output
-	$$anvl_opt{find} = $opt{find};	# find records matching given regex
-	$$anvl_opt{show} = $opt{show};	# show given elems in recs found
+	$$anvl_opt{elem_order} = $r_elem_order;	# different element order
+	$$anvl_opt{find} = $opt{find};		# find records matching regex
 	$$anvl_opt{invert} = $opt{invert};	# comma-invert any values
+	$$anvl_opt{show} = $opt{show};		# show given elems in recs
+	$$anvl_opt{verbose} = $opt{verbose};	# more output
 
 	# While anvl_opt and om_opt share some keys, they're used differently.
 
 	my %om_opt = (
-		outhandle	=> *STDOUT,
 		comments	=> $opt{comments},
+		outhandle	=> *STDOUT,
 		verbose		=> $opt{verbose},
 	);
 	$opt{predns} and			# predicate namespace
@@ -208,12 +223,20 @@ produced depending on the target format.
 Only output records that match the regular expression, I<regexp>.
 (The match is done before any expansion of short form ERCs.)
 
-=item B<-m> I<format>, B<--format> I<format>
+=item B<-m> I<format[:order]>, B<--format> I<format[:order]>
 
 Convert to the given I<format>, currently one of "ANVL" (default), "XML",
-"Turtle", "JSON", or "Plain".  When converting comments to the JSON or
-Plain formats, pseudo-comments are output.  Some options (below) apply
-only to specific target formats.
+"Turtle", "JSON", "CSV", "PSV" (Pipe Separated Value), or "Plain".  When
+converting comments to the JSON or Plain formats, pseudo-comments are
+output.  Some options (below) apply only to specific target formats.
+
+Optionally, I<format> may be followed by a colon and I<order>, which is a
+list of '|'-separated element names specifying particular set and
+ordering in which to output record elements.  For example,
+"CSV:name|phone|email" specifies the "CSV" format with records consisting
+of exactly name, phone, and email.  Currently, only the first instance of
+a named element in a record is output, and a missing element is output as
+if it had an empty value.
 
 =item B<--invert>
 
@@ -290,7 +313,7 @@ John Kunze I<jak at ucop dot edu>
 
 =head1 COPYRIGHT
 
-Copyright 2009-2010 UC Regents.  Open source BSD license.
+Copyright 2009-2011 UC Regents.  Open source BSD license.
 
 =begin CPAN
 

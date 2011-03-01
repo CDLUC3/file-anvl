@@ -5,7 +5,7 @@ use strict;
 use warnings;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-0-26 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-0-28 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -18,14 +18,16 @@ our %EXPORT_TAGS = (all => [ @EXPORT_OK ]);
 
 our %outputformats = (
 	anvl	=> 'ANVL',
+	csv	=> 'CSV',
 	json	=> 'JSON',
 	plain	=> 'Plain',
+	psv	=> 'PSV',
 	turtle	=> 'Turtle',
 	xml	=> 'XML',
 );
 
 sub listformats {
-	return sort values %outputformats;
+	return map $outputformats{$_}, sort keys %outputformats;
 }
 
 sub om_opt_defaults { return {
@@ -120,6 +122,29 @@ sub elems {
 	return $sequence;
 }
 
+# Shared routine to construct a header ordering based on the record
+# in the given element array.  Used by CSV and PSV formats.
+#
+sub rec2hdr { my( $r_elems )			= (shift);
+
+	my ($n, $nmax) = (0, scalar @$r_elems);
+	my $r_elem_order = [ ];		# create an array reference
+
+	for ($n = 0; $n < $nmax; $n += 3) {
+
+		$n > 0 and	# normal element case
+			push(@$r_elem_order, $$r_elems[$n + 1]),
+			next;
+
+		# If we get here, $n == 0 (record start).  If the record
+		# starts with a label-less value, use '_' as the name.
+		#
+		$$r_elems[$n + 2] and
+			push(@$r_elem_order, '_'),
+	}
+	return $r_elem_order;
+}
+
 package File::OM::ANVL;
 
 our @ISA = ('File::OM');
@@ -159,7 +184,8 @@ sub elem {	# OM::ANVL
 		);
 		$s .= "\n";			# close comment
 	}
-	else {
+# XXX document what undef for $name means
+	elsif (defined $name) {			# no element if no name
 	# XXX would it look cooler with :\t after the label??
 		# xxx this should be stacked
 		$self->{element_name} = $self->name_encode($name);
@@ -264,7 +290,6 @@ sub name_encode {	# OM::ANVL
 }
 
 sub value_encode {	# OM::ANVL
-
 	my ($self, $s, $anvl_mode) = (shift, shift, shift);
 	$s		or return '';
 	$anvl_mode ||= 'ANVL';
@@ -300,6 +325,179 @@ sub comment_encode {	# OM::ANVL
 	return $s;
 }
 
+package File::OM::CSV;
+
+our @ISA = ('File::OM');
+
+sub elem {	# OM::CSV
+	my $self = shift;
+	my ($name, $value, $lineno, $elemnum) = (shift, shift, shift, shift);
+	my ($s, $z) = ('', '');		# built string and catchup string
+
+	$self->{record_is_open} or	# call orec() to open record first
+		($z =  $self->orec(undef, $lineno),	# may call ostream()
+		$self->{record_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+
+	defined($elemnum) and
+		$self->{elemnum} = $elemnum
+	or
+		$self->{elemnum}++;
+
+	# Parse $lineno, which is empty or has form LinenumType, where
+	# Type is either ':' (real element) or '#' (comment).
+	defined($lineno)	or $lineno = '1:';
+	my ($num, $type) =
+		$lineno =~ /^(\d*)\s*(.)/;
+
+	use Text::Wrap;		# recommends localizing next two settings
+	local $Text::Wrap::columns = $self->{wrap};
+	local $Text::Wrap::huge = 'overflow';
+
+	$self->{elemnum} > 1 and	# we've output an element already,
+		$s .= ",";		# so output a separator character
+
+	if ($type eq '#') {
+		$self->{element_name} = undef;	# indicates comment
+		$s .= Text::Wrap::wrap(		# wrap lines with '#' as
+			'#',			# first line "indent" and
+			'# ',			# '# ' for all other indents
+			$self->comment_encode($value)	# main part to wrap
+		);
+	}
+	elsif (defined $name) {			# no element if no name
+		# xxx this should be stacked
+		$self->{element_name} = $self->name_encode($name);
+		my $enc_val = 
+		$s .= Text::Wrap::wrap('', '',
+			$self->value_encode($value));	# encoded value
+		# M_ELEMENT and C_ELEMENT would start here
+	}
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
+sub orec {	# OM::CSV
+	my $self = shift;
+	my ($recnum, $lineno) = (shift, shift);
+	my ($s, $z) = ('', '');		# built string and catchup string
+
+	$self->{elemnum} = 0;
+	$self->{stream_is_open} or	# call ostream() to open stream first
+		($z = $self->ostream(),
+		$self->{stream_is_open} = 1);
+	$self->{record_is_open} = 1;
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+
+	defined($recnum) and
+		$self->{recnum} = $recnum
+	or
+		$self->{recnum}++;
+
+	defined($lineno)	or $lineno = '1:';
+	# xxxx really? will someone pass that in?
+
+	if ($self->{recnum} == 1) {
+
+		# We're one of the few orec's that use these args.
+		# We do it only to output and possibly define headers.
+		#
+		my ($r_elems, $r_elem_order) = (shift, shift);
+
+		# If the number and order of elements are not defined,
+		# construct them from the ordering implied by record 1.
+		#
+		$r_elem_order or
+			$r_elem_order = File::OM::rec2hdr($r_elems);
+
+		# We're at record 1 in a CVS file, so output a header.
+		#
+		$s .= join(",", map(name_encode($self, $_), @$r_elem_order))
+			. "\n";
+	}
+
+	$self->{verbose} and
+		$s .= "# from record $self->{recnum}, line $lineno\n";
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
+sub crec {	# OM::CSV
+	my ($self, $recnum) = (shift, shift);
+	$self->{record_is_open} = 0;
+	my $s = "\n";
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
+sub ostream {	# OM::CSV
+	my $self = shift;
+
+	$self->{recnum} = 0;
+	$self->{stream_is_open} = 1;
+	my $s = '';
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
+sub cstream {	# OM::CSV
+	my $self = shift;
+	my ($s, $z) = ('', '');		# built string and catchup string
+	$self->{record_is_open} and	# wrap up any loose ends
+		$z = $self->crec();
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{stream_is_open} = 0;
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
+sub name_encode {	# OM::CSV
+	# CSV names used only in header line
+	my ($self, $s) = (shift, shift);
+	$s		or return '';
+
+	# yyy should names be put inside double quotes?
+	$s =~ s/^\s+//;
+	$s =~ s/\s+$//;		# trim both ends
+	$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
+	$s =~ s/"/""/g;		# double all internal double-quotes
+
+	return $s;
+}
+
+sub value_encode {	# OM::CSV
+	my ($self, $s) = (shift, shift);
+	$s		or return '';
+
+	$s =~ s/"/""/g;		# double all internal double-quotes
+	$s =~ s/^\s*/"/;
+	$s =~ s/\s*$/"/;	# trim both ends and double-quote
+
+	return $s;
+}
+
+sub comment_encode {	# OM::CSV
+	# in CSV this would be a pseudo-comment
+	my ($self, $s) = (shift, shift);
+	$s		or return '';
+
+	$s =~ s/"/""/g;		# double all internal double-quotes
+	$s =~ s/^\s*/"/;
+	$s =~ s/\s*$/"/;	# trim both ends and double-quote
+
+	return $s;
+}
+
 package File::OM::JSON;
 
 our @ISA = ('File::OM');
@@ -327,12 +525,15 @@ sub elem {	# OM::JSON
 
 	$type eq '#'		and $name = '#';	# JSON pseudo-comment!
 	$type eq '#'	and $self->{elemnum}--;		# doesn't count as elem
-	$self->{element_name} = $self->name_encode($name);
-	$self->{elemnum} > 1 || $self->{verbose} and	# either real element
-		$s .= ',';	# or pseudo-comment element was used
-	$s .= "\n" . $self->{indent};
-	$s .= '"' . $self->{element_name} . '": "'
-		. $self->value_encode($value) . '"';
+	if (defined $name) {				# no element if no name
+		$self->{element_name} = $self->name_encode($name);
+		# either real element or pseudo-comment element was used
+		$self->{elemnum} > 1 || $self->{verbose} and
+			$s .= ',';
+		$s .= "\n" . $self->{indent};
+		$s .= '"' . $self->{element_name} . '": "'
+			. $self->value_encode($value) . '"';
+	}
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -471,7 +672,8 @@ sub elem {	# OM::Plain
 		);
 		$s .= "\n";			# close comment
 	}
-	elsif ($value) {	# don't print if empty value (feature of Plain)
+	elsif ($value and defined $name) {	# no element if no name
+		# It is a feature of Plain not to print if value is empty.
 		$self->{element_name} = $self->name_encode($name);
 		$s .= Text::Wrap::wrap(		# wrap lines with '' as
 			'',			# first line "indent" and
@@ -565,6 +767,187 @@ sub comment_encode {	# OM::Plain
 	return $s;
 }
 
+# XXXXXXXXXX just a copy of CSV for now
+package File::OM::PSV;
+
+our @ISA = ('File::OM');
+
+sub elem {	# OM::PSV
+	my $self = shift;
+	my ($name, $value, $lineno, $elemnum) = (shift, shift, shift, shift);
+	my ($s, $z) = ('', '');		# built string and catchup string
+
+	$self->{record_is_open} or	# call orec() to open record first
+		($z =  $self->orec(undef, $lineno),	# may call ostream()
+		$self->{record_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+
+	defined($elemnum) and
+		$self->{elemnum} = $elemnum
+	or
+		$self->{elemnum}++;
+
+	# Parse $lineno, which is empty or has form LinenumType, where
+	# Type is either ':' (real element) or '#' (comment).
+	defined($lineno)	or $lineno = '1:';
+	my ($num, $type) =
+		$lineno =~ /^(\d*)\s*(.)/;
+
+	use Text::Wrap;		# recommends localizing next two settings
+	local $Text::Wrap::columns = $self->{wrap};
+	local $Text::Wrap::huge = 'overflow';
+
+	$self->{elemnum} > 1 and	# we've output an element already,
+		$s .= "|";		# so output a separator character
+
+	if ($type eq '#') {
+		$self->{element_name} = undef;	# indicates comment
+		$s .= Text::Wrap::wrap(		# wrap lines with '#' as
+			'#',			# first line "indent" and
+			'# ',			# '# ' for all other indents
+			$self->comment_encode($value)	# main part to wrap
+		);
+	}
+	elsif (defined $name) {			# no element if no name
+		# xxx this should be stacked
+		$self->{element_name} = $self->name_encode($name);
+		my $enc_val = 
+		$s .= Text::Wrap::wrap('', '',
+			$self->value_encode($value));	# encoded value
+		# M_ELEMENT and C_ELEMENT would start here
+	}
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
+sub orec {	# OM::PSV
+	my $self = shift;
+	my ($recnum, $lineno) = (shift, shift);
+	my ($s, $z) = ('', '');		# built string and catchup string
+
+	$self->{elemnum} = 0;
+	$self->{stream_is_open} or	# call ostream() to open stream first
+		($z = $self->ostream(),
+		$self->{stream_is_open} = 1);
+	$self->{record_is_open} = 1;
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+
+	defined($recnum) and
+		$self->{recnum} = $recnum
+	or
+		$self->{recnum}++;
+
+	defined($lineno)	or $lineno = '1:';
+	# xxxx really? will someone pass that in?
+
+	if ($self->{recnum} == 1) {
+
+		# We're one of the few orec's that use these args.
+		# We do it only to output and possibly define headers.
+		#
+		my ($r_elems, $r_elem_order) = (shift, shift);
+
+		# If the number and order of elements are not defined,
+		# construct them from the ordering implied by record 1.
+		#
+		$r_elem_order or
+			$r_elem_order = File::OM::rec2hdr($r_elems);
+
+		# We're at record 1 in a CVS file, so output a header.
+		#
+		$s .= join("|", map(name_encode($self, $_), @$r_elem_order))
+			. "\n";
+	}
+
+	$self->{verbose} and
+		$s .= "# from record $self->{recnum}, line $lineno\n";
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
+sub crec {	# OM::PSV
+	my ($self, $recnum) = (shift, shift);
+	$self->{record_is_open} = 0;
+	my $s = "\n";
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
+sub ostream {	# OM::PSV
+	my $self = shift;
+
+	$self->{recnum} = 0;
+	$self->{stream_is_open} = 1;
+	my $s = '';
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
+sub cstream {	# OM::PSV
+	my $self = shift;
+	my ($s, $z) = ('', '');		# built string and catchup string
+	$self->{record_is_open} and	# wrap up any loose ends
+		$z = $self->crec();
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+	$self->{stream_is_open} = 0;
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
+sub name_encode {	# OM::PSV
+	# PSV names used only in header line
+	my ($self, $s) = (shift, shift);
+	$s		or return '';
+
+	$s =~ s/^\s+//;
+	$s =~ s/\s+$//;		# trim both ends
+	$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
+	$s =~ s/%/%%/g;		# to preserve literal %, double it
+				# yyy must be decoded by receiver
+	$s =~ s/\|/%7c/g;	# URL-encode all colons
+	$s =~ s/\n/%0a/g;	# URL-encode all newlines
+
+	return $s;
+}
+
+sub value_encode {	# OM::PSV
+	my ($self, $s) = (shift, shift);
+	$s		or return '';
+
+	$s =~ s/^\s+//;
+	$s =~ s/\s+$//;		# trim both ends
+	$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
+	$s =~ s/%/%%/g;		# to preserve literal %, double it
+				# yyy must be decoded by receiver
+	$s =~ s/\|/%7c/g;	# URL-encode all colons
+	$s =~ s/\n/%0a/g;	# URL-encode all newlines
+
+	return $s;
+}
+
+sub comment_encode {	# OM::PSV
+	# in PSV this would be a pseudo-comment
+	my ($self, $s) = (shift, shift);
+	$s		or return '';
+
+	$s =~ s/%/%%/g;		# to preserve literal %, double it
+				# yyy must be decoded by receiver
+	$s =~ s/\|/%7c/g;	# URL-encode all colons
+	$s =~ s/\n/%0a/g;	# URL-encode all newlines
+
+	return $s;
+}
+
 package File::OM::Turtle;
 
 our @ISA = ('File::OM');
@@ -603,7 +986,7 @@ sub elem {	# OM::Turtle
 		# follow on the next line after that, and the only
 		# remedy is to peek ahead at the next element.
 	}
-	else {
+	elsif (defined $name) {			# no element if no name
 		$self->{element_name} = $self->name_encode($name);
 		$self->{elemnum} > 1		and $s .= ' ;';
 		$s .= "\n" . $self->{turtle_indent};
@@ -758,7 +1141,7 @@ sub elem {	# OM::XML
 		# M_ELEMENT and C_ELEMENT would start here
 		$s .= "-->\n";			# close comment
 	}
-	else {
+	elsif (defined $name) {			# no element if no name
 		# xxx we're saving this to no end; in full form
 		# (open and close element) the element name would
 		# be saved on a stack and the indent increased
@@ -914,7 +1297,7 @@ File::OM - Output Multiplexer routines
 
  $om->crec();               # close record
 
- $om->elem(                 # output an entire element
+ $om->elem(                 # output entire element, unless $name undefined
        $name,               # string representing element name
        $value,              # string representing element value
        $lineno,             # input line number/type (default '1:')
@@ -934,19 +1317,32 @@ File::OM - Output Multiplexer routines
 =head1 DESCRIPTION
 
 The B<OM> (Output Multiplexer) Perl module provides a general output
-formatting framework for data that can be represented as records
-consisting of elements, values, and comments.  Specific conversions are
-possible to XML, Turtle, JSON, and "Plain" unlabeled text.
+formatting framework for data that can be represented as a stream of
+records consisting of element names, values, and comments.  Specific
+conversions are possible to XML, Turtle, JSON, CSV, PSV (Pipe Separated
+Value) and "Plain" unlabeled text.
 
 The internal element structure is currently identical to the structure
-returned by L<File::ANVL::anvl_recarray>.  The first triple of the
-returned array is special in that it describes the origin of the record;
-its elements are
+returned by L<File::ANVL::anvl_recarray>.  The C<n>-th element
+corresponds to three Perl array elements as follows:
 
-     INDEX   NAME        VALUE
-       0     format      original format ("ANVL", "JSON", "XML", etc)
-       1     <unused>
-       2     <unused>
+     INDEX   CONTENT
+     3n + 0  input file line number
+     3n + 1  n-th ANVL element name
+     3n + 2  n-th ANVL element value
+
+This means, for example, that the first two ANVL element names would be
+found at Perl array indices 4 and 7.  The first triple is special; array
+elements 0 and 2 are undefined unless the record begins with an unlabeled
+value, such as (in a quasi-ANVL record),
+
+     Smith, Jo
+     home: 555-1234
+     work: 555-9876
+
+in which case they contain the line number and value, respectively. Array
+element 1 always contains a string naming the format of the input, such
+as, "ANVL", "JSON", "XML", etc.
 
 The remaining triples are free form except that the values will have been
 drawn from the original format and possibly decoded.  The first item
@@ -967,6 +1363,10 @@ an application can easily call no method but C<elem()>, as the
 necessary open (C<orec()> and C<ostream>) and close (C<crec()> and
 C<cstream()>) methods will be invoked automatically before the first
 element is output and before the object is destroyed, respectively.
+Passing an undefined first argument ($name) to C<elem()> is useful for
+skipping an element in a position-based format such as CSV or PSV, which
+indicate a missing element by outputing a separator character; when the
+format is not position-based, the method usually outputs nothing.
 
 Constructor options include 'verbose', which causes the methods to insert
 record and line numbers as comments or pseudo-comments (e.g., for JSON,
@@ -1033,7 +1433,7 @@ John A. Kunze I<jak at ucop dot edu>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2009-2010 UC Regents.  Open source BSD license.
+Copyright 2009-2011 UC Regents.  Open source BSD license.
 
 =head1 PREREQUISITES
 

@@ -9,7 +9,7 @@ WriteMakefile(
     AUTHOR              => 'John A. Kunze <jak@ucop.edu>',
     VERSION_FROM        => 'VERSION',
     ABSTRACT            => 'commands and routines for ANVL, ERC, and OM',
-    ($ExtUtils::MakeMaker::VERSION >= 6.3002
+    ($ExtUtils::MakeMaker::VERSION ge 6.3002
       ? ('LICENSE'=> 'BSD')
       : ()),
     PM			=> {

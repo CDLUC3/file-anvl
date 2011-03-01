@@ -136,7 +136,9 @@ my @elems;
 is File::ANVL::anvl_recarray($anvl_record, \@elems), "",
 	'easy recarray split, all defaults';
 
-is $elems[0], "ANVL", 'record preamble';
+is $elems[0], '', 'record preamble lineno';
+is $elems[1], "ANVL", 'record preamble format';
+is $elems[2], '', 'record preamble format';
 is $elems[3], "1:", 'first line number';
 is $elems[4], "erc", 'valueless label';
 is $elems[5], "", 'valueless value';
@@ -175,8 +177,14 @@ is File::ANVL::anvl_recarray($r1, \@elems, 1, {comments=>1}), "",
 	'record with final comment, comments kept';
 is scalar(@elems), 21, 'correct elem count for record, comments kept';
 
+ok (($elems[9] eq '3:' && $elems[10] eq 'c'),
+	'input line number for "c" element, comments kept');
+
 is File::ANVL::anvl_recarray($r1, \@elems), "", 'record, comments stripped';
 is scalar(@elems), 12, 'correct elem count for record, no comments';
+
+ok (($elems[6] eq '3:' && $elems[7] eq 'c'),
+	'input line number for "c" element, comments stripped');
 
 is File::ANVL::anvl_recarray("
 a: b c

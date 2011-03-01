@@ -480,8 +480,10 @@ is $x, '<recs>
 
 $x = `$cmd --listformats`;
 is $x, 'ANVL
+CSV
 JSON
 Plain
+PSV
 Turtle
 XML
 ', 'anvl --listformats';

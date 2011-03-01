@@ -5,7 +5,7 @@ use strict;
 use warnings;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-0-26 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-0-28 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -159,7 +159,7 @@ John A. Kunze I<jak at ucop dot edu>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2009-2010 UC Regents.  Open source BSD license.
+Copyright 2009-2011 UC Regents.  Open source BSD license.
 
 =head1 PREREQUISITES
 

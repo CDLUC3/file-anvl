@@ -279,5 +279,150 @@ is $x, "e: the\n\n\ng: the\n\ne: the\n\n", 'show 3 lines in 4 records';
 $x = `$cmd --find "(now|aid)" --show "^g" $td/file`;
 is $x, "g: time\n\ng: party\n\n", 'find and show with regexes';
 
+$x = `$cmd -m "anvl:e|a|c" $td/file`;
+like $x, qr/(e:.*a:.*c:.*){4}/s, 'element order specified across 4 records';
+
+$x = `$cmd -m "anvl:e|a|c|e" $td/file`;
+like $x, qr/(e:.*a:.*c:.*e:.*){4}/s, 'element order specified with repeat';
+
+$x = `$cmd -m "anvl: g|c|a" --find "party" $td/file`;
+like $x, qr/party.*of.*aid/s, 'element order specified on found record';
+
+remove_td();
+}
+
+{	# label-less value (name='_') tests
+
+remake_td();
+
+my $recstream = 'Smith, Jo
+H: 555-1234
+W: 555-9876
+W: 555-5678
+E: jsmith@example.com
+
+Wong, Chris
+H: 555-1111
+W: 555-2222
+
+N: Khan, H.
+H: 555-3333
+W: 555-4444
+';
+
+my $x = filval(">$td/file", $recstream);
+
+$x = `$cmd -m "anvl" $td/file`;
+like $x, qr/_: Smith, Jo.*_: Wong, Chris/s,
+	'all values, label-less values with name "_"';
+
+$x = `$cmd -m "anvl:H|W" $td/file`;
+like $x, qr/H: 555-1234\nW: 555-9876\n\n.*1111.*2222/s,
+	'some selected values';
+
+$x = `$cmd -m "anvl:H|_|W" $td/file`;
+like $x, qr/H: 555-1234\n_: Smith, Jo\nW:.*_: Wong, Chris/s,
+	'selected values, including label-less values with name "_"';
+
+$x = `$cmd -m "anvl:H|xyz|W" $td/file`;
+like $x, qr/H: 555-1111\nW: 555-2222/s,
+	'selected values, absent element silently ignored';
+
+$x = `$cmd -m "anvl:H||W" $td/file`;
+like $x, qr/H: 555-1234\n.*W: 555-2222/s,
+	'empty element name silently ignored in non-order-sensitive output';
+
+remove_td();
+}
+
+{	# CSV and PSV tests
+
+remake_td();
+
+my $recstream = '
+
+Smith, Jo
+H: 555-1234
+W: 555-9876
+W: 555-5678
+E: jsmith@example.com
+
+Wong, Chris
+H: 555-1111
+W: 555-2222
+
+N: Khan, H.
+H: 555-3333
+W: 555-4444
+';
+
+my $x = filval(">$td/file", $recstream);
+
+#$x = `$cmd -m "anvl" $td/file`;
+#like $x, qr/_: Smith, Jo.*_: Wong, Chris/s,
+#	'all values, label-less values with name "_"';
+
+$x = `$cmd -m "csv:H||W" $td/file`;
+like $x, qr/"555-1234",,".*555-2222"/s,
+	'empty element name creates empty field in order-sensitive output';
+
+
+$x = `$cmd -m "csv:H|W" $td/file`;
+like $x, qr/"555-1234","555-9876".*1111.*2222.*4444"\n$/s,
+	'some selected CSV values';
+
+$x = `$cmd -m "psv:H|W" $td/file`;
+like $x, qr/555-1234\|555-9876.*1111\|.*2222.*4444\n$/s,
+	'some selected PSV values';
+
+$recstream = '
+
+example 1
+Name: Fr|an "Doc" Smith
+Home Phone: 555-1234
+Work Phone: 555-9876
+Mobile Phone: 510-555-9999
+Email: fsmith@example.com
+Group: family
+
+example 2
+Name: Chris Wong
+Home Phone: 555-1111
+Work Phone: 555-2222
+Mobile Phone: 510-555-8888
+Email: cwong@example.com
+Group: friend
+
+example 3
+Name: Hashim Khan
+Home Phone: 555-3333
+Work Phone: 555-4444
+Mobile Phone: 510-555-7777
+Email: hkhan@example.com
+Group: squash
+';
+
+$x = filval(">$td/file", $recstream);
+
+$x = `$cmd -m "csv:Name|Mobile Phone|Work Phone|Email|Group" $td/file`;
+like $x, qr/"Fr\|an ""Doc"" Smith",.*555-8888".*2222.*cwong.*"squash"\n$/s,
+	'CSV selected phone book values, with quoted internal chars';
+
+$x = `$cmd -m "psv:Name|Mobile Phone|Work Phone|Email|Group" $td/file`;
+like $x, qr/Fr%7can "Doc" Smith\|.*555-8888.*2222.*cwong.*\|squash\n$/s,
+	'PSV selected phone book values, with quoted internal chars';
+
+$x = `$cmd -m csv $td/file`;
+like $x, qr/^_,Name,.*"example 1.*"Fr|an.*2222".*555-8888.*cwong.*"squash"\n$/s,
+	'CSV default phone book values';
+
+$x = `$cmd -m "csv:_" $td/file`;
+like $x, qr/^_\n"example 1".*"example 3"\n$/s,
+	'CSV single value, label-less value';
+
+$x = `$cmd -m "csv:Group" $td/file`;
+like $x, qr/^Group\n"family".*"squash"\n$/s,
+	'CSV single value, last named value';
+
 remove_td();
 }
