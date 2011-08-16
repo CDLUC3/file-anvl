@@ -5,7 +5,7 @@ use strict;
 use warnings;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-0-28 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-0-29 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -184,6 +184,8 @@ sub elem {	# OM::ANVL
 		);
 		$s .= "\n";			# close comment
 	}
+# XXX what if ref($value) eq "ARRAY" -> can be used for repeated vals?
+# XXX does undefined $name mean comment?
 # XXX document what undef for $name means
 	elsif (defined $name) {			# no element if no name
 	# XXX would it look cooler with :\t after the label??
@@ -273,7 +275,7 @@ sub cstream {	# OM::ANVL
 
 sub name_encode {	# OM::ANVL
 	my ($self, $s) = (shift, shift);
-	$s		or return '';
+	defined($s)		or return '';
 	$s =~ s/^\s+//;
 	$s =~ s/\s+$//;		# trim both ends
 	$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
@@ -291,7 +293,7 @@ sub name_encode {	# OM::ANVL
 
 sub value_encode {	# OM::ANVL
 	my ($self, $s, $anvl_mode) = (shift, shift, shift);
-	$s		or return '';
+	defined($s)		or return '';
 	$anvl_mode ||= 'ANVL';
 
 	my $value = $s;			# save original value
@@ -299,8 +301,9 @@ sub value_encode {	# OM::ANVL
 		$s =~ /^(\n*)/;		# always defined, often ""
 
 	# value after colon starts with either preserved newlines,
-	#	a space, or (if no value) nothing
-	my $value_start = $initial_newlines || ($value ? ' ' : '');
+	#	a space, or, if value is "" (as opposed to 0), nothing
+	my $value_start = $initial_newlines || ($value eq "" ? '' : ' ');
+	#my $value_start = $initial_newlines || ($value ? ' ' : '');
 	# xxxx is this the right place to enforce the space after ':'?
 
 	# xxx is there a linear whitespace char class??
@@ -320,7 +323,7 @@ sub value_encode {	# OM::ANVL
 
 sub comment_encode {	# OM::ANVL
 	my ($self, $s) = (shift, shift);
-	$s	or return '';
+	defined($s)	or return '';
 	$s =~ s/\n/\\n/g;			# escape \n  yyy??
 	return $s;
 }
@@ -464,7 +467,7 @@ sub cstream {	# OM::CSV
 sub name_encode {	# OM::CSV
 	# CSV names used only in header line
 	my ($self, $s) = (shift, shift);
-	$s		or return '';
+	defined($s)		or return '';
 
 	# yyy should names be put inside double quotes?
 	$s =~ s/^\s+//;
@@ -477,7 +480,7 @@ sub name_encode {	# OM::CSV
 
 sub value_encode {	# OM::CSV
 	my ($self, $s) = (shift, shift);
-	$s		or return '';
+	defined($s)		or return '';
 
 	$s =~ s/"/""/g;		# double all internal double-quotes
 	$s =~ s/^\s*/"/;
@@ -489,7 +492,7 @@ sub value_encode {	# OM::CSV
 sub comment_encode {	# OM::CSV
 	# in CSV this would be a pseudo-comment
 	my ($self, $s) = (shift, shift);
-	$s		or return '';
+	defined($s)		or return '';
 
 	$s =~ s/"/""/g;		# double all internal double-quotes
 	$s =~ s/^\s*/"/;
@@ -613,7 +616,7 @@ sub cstream {	# OM::JSON
 
 sub name_encode {	# OM::JSON
 	my ($self, $s) = (shift, shift);
-	$s	or return '';
+	defined($s)	or return '';
 	$s =~ s/(["\\])/\\$1/g;			# excape " and \
 	$s =~ s{
 		([\x00-\x1f])			# escape all control chars
@@ -672,7 +675,7 @@ sub elem {	# OM::Plain
 		);
 		$s .= "\n";			# close comment
 	}
-	elsif ($value and defined $name) {	# no element if no name
+	elsif (defined($value) and defined($name)) {	# no element if no name
 		# It is a feature of Plain not to print if value is empty.
 		$self->{element_name} = $self->name_encode($name);
 		$s .= Text::Wrap::wrap(		# wrap lines with '' as
@@ -907,7 +910,7 @@ sub cstream {	# OM::PSV
 sub name_encode {	# OM::PSV
 	# PSV names used only in header line
 	my ($self, $s) = (shift, shift);
-	$s		or return '';
+	defined($s)		or return '';
 
 	$s =~ s/^\s+//;
 	$s =~ s/\s+$//;		# trim both ends
@@ -922,7 +925,7 @@ sub name_encode {	# OM::PSV
 
 sub value_encode {	# OM::PSV
 	my ($self, $s) = (shift, shift);
-	$s		or return '';
+	defined($s)		or return '';
 
 	$s =~ s/^\s+//;
 	$s =~ s/\s+$//;		# trim both ends
@@ -938,7 +941,7 @@ sub value_encode {	# OM::PSV
 sub comment_encode {	# OM::PSV
 	# in PSV this would be a pseudo-comment
 	my ($self, $s) = (shift, shift);
-	$s		or return '';
+	defined($s)		or return '';
 
 	$s =~ s/%/%%/g;		# to preserve literal %, double it
 				# yyy must be decoded by receiver
@@ -1073,7 +1076,7 @@ sub cstream {	# OM::Turtle
 
 sub name_encode {	# OM::Turtle
 	my ($self, $s) = (shift, shift);
-	$s	or return '';
+	defined($s)	or return '';
 	$s =~ s/(["\\])/\\$1/g;
 	return $s;
 	# \" \\
@@ -1081,14 +1084,14 @@ sub name_encode {	# OM::Turtle
 
 sub value_encode {	# OM::Turtle
 	my ($self, $s) = (shift, shift);
-	$s	or return '';
+	defined($s)	or return '';
 	$s =~ s/(["\\])/\\$1/g;
 	return $s;
 }
 
 sub comment_encode {	# OM::Turtle
 	my ($self, $s) = (shift, shift);
-	$s	or return '';
+	defined($s)	or return '';
 	$s =~ s/\n/\\n/g;			# escape \n
 	return $s;
 }
@@ -1243,7 +1246,8 @@ sub cstream {	# OM::XML
 
 sub name_encode {	# OM::XML
 	my $self = shift;
-	local $_ = shift(@_) || '';
+	local $_ = shift(@_);
+	defined($_)		or $_ = '';
 
 	s/&/&amp;/g;
 	s/'/&apos;/g;
@@ -1266,7 +1270,7 @@ sub value_encode {	# OM::XML
 
 sub comment_encode {	# OM::XML
 	my ($self, $s) = (shift, shift);
-	$s	or return '';
+	defined($s)	or return '';
 	$s =~ s/-->/--&gt;/g;
 	return $s;
 }
@@ -1284,7 +1288,7 @@ File::OM - Output Multiplexer routines
  use File::OM;              # to import routines into a Perl script
 
  $om = File::OM->new(       # make output object that creates strings in
-       $format, {           # XML, Turtle, JSON, ANVL, or Plain formats
+       $format, {           # XML, Turtle, JSON, ANVL, CSV, PSV, or Plain
    outhandle => *STDOUT,    # (opt) print string instead of returning it
    verbose => 1 });         # (opt) also output record and line numbers
 
@@ -1351,13 +1355,13 @@ such as "34:" or "6#".  The number indicates the line number (or octet
 offset, depending on the origin format) of the start of the element.  The
 letter is either ':' to indicate a real element or '#' to indicate a
 comment; if the latter, the element name has no defined meaning and the
-comment is contatined in the value.  To output an element as a comment
+comment is contained in the value.  To output an element as a comment
 without regard to line number, give $lineno as "#".
 
 B<OM> presents an object oriented interface.  The object constructor
 takes a format argument and returns C<undef> if the format is unknown.
 The returned object has methods for creating format-appropriate output
-corresponding (currently) to five output modes; for a complete
+corresponding (currently) to seven output modes; for a complete
 application of these methods, see L<File::ANVL::anvl_om>.  Nonetheless,
 an application can easily call no method but C<elem()>, as the
 necessary open (C<orec()> and C<ostream>) and close (C<crec()> and

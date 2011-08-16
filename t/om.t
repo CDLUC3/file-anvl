@@ -70,6 +70,12 @@ is ref($om), 'File::OM::Plain', 'made a File::OM::Plain object';
 is $om->elem('foo', 'bar'), 'bar
 ', 'simple Plain element';
 
+is $om->elem('foo', 0), '0
+', 'Plain element of value 0';
+
+is $om->elem('foo', ""), '
+', 'Plain element of value ""';
+
 $om = File::OM->new("XML", { verbose => 1 });
 is ref($om), 'File::OM::XML', 'made a File::OM::XML object';
 
@@ -80,12 +86,20 @@ like $om->elem('foo', 'bar'),
 like $om->orec(), qr/<rec>.*record 2, line 1/,
 	'XML verbose record start with defaults for recnum and lineno';
 
+like $om->elem('foo', 0), qr,<foo>0</foo>,, 'XML element of value 0';
+
+like $om->elem('foo', ""), qr,<foo></foo>,, 'XML element of value ""';
+
 $om = File::OM->new('JSON');
 is ref($om), 'File::OM::JSON', 'made a File::OM::JSON object';
 
 is $om->elem('foo', 'bar'), '[
   {
     "foo": "bar"', 'simple JSON element';
+
+like $om->elem('foo', 0), qr,"foo": "0",, 'JSON element of value 0';
+
+like $om->elem('foo', ""), qr,"foo": "",, 'JSON element of value ""';
 
 $om = File::OM->new('Turtle');
 is ref($om), 'File::OM::Turtle', 'made a File::OM::Turtle object';
@@ -96,12 +110,20 @@ is $om->orec('a:b'), '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 is $om->elem('foo', 'bar'), '
     erc:foo """bar"""', 'simple Turtle element';
 
+like $om->elem('foo', 0), qr,erc:foo """0""",, 'Turtle element of value 0';
+
+like $om->elem('foo', ""), qr,erc:foo """""",, 'Turtle element of value ""';
+
 $om = new File::OM::ANVL;
 is ref($om), 'File::OM::ANVL', 'made a "new File::OM::ANVL" object';
 
 $om = File::OM::ANVL->new();
 is ref($om), 'File::OM::ANVL',
 	'made a File::OM::ANVL object using subclass constructor';
+
+like $om->elem('foo', 0), qr,foo: 0\n,, 'ANVL element of value 0';
+
+like $om->elem('foo', ""), qr,foo:\n,, 'ANVL element of value ""';
 
 # xxxxxxxxx this doesn't work but should! (arg1 assumed to be format)
 #$om = File::OM::ANVL->new({wrap=>18});

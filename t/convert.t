@@ -307,7 +307,9 @@ is $x, '[
 ', 'anvl2json with 2 short form ERCs in one oddly formed ERC';
 
 $x = `$cmd --format plain $td/file`;
-is $x, 'ab
+is $x, '
+
+ab
 cd
 ef
 gh
@@ -316,6 +318,8 @@ kl
 mn
 op
 qr
+
+
 another
 erc
 how
