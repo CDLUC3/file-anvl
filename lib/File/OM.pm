@@ -1,3 +1,7 @@
+# xxx need 'raw' format, like plain but no wrap for resolve mode
+# xxx or need 'granvl' format, like anvl but no wrap for resolve mode?
+# xxx need 'null' format, to do ...?
+
 package File::OM;
 
 use 5.006;
@@ -55,6 +59,7 @@ sub om_opt_defaults { return {
 		'rec',
 	wrap		=> 72,	# at which column to wrap elements (0=nowrap)
 	wrap_indent	=> '',	# current indent for wrap, but "\t" for ANVL
+				# xxx is this even used?
 	verbose		=> 0,	# more output (default less)
 
 	# The following keys are maintained internally.
