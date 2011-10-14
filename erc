@@ -202,7 +202,6 @@ John Kunze I<jak at ucop dot edu>
 #	print("turtle record:\n$rec\n")
 #    ;
 
-# xxx change ercspec n2t.info -> n2t.net
 # xxx     add %{ and %} to anvl decoding
 # xxx     decide on good name for short form and long form ERC
 # xxx make this File::ANVL::getpara

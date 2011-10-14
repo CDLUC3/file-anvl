@@ -196,8 +196,6 @@ line\ 4 .* line\ 21 .* line\ 26 .* line\ 30 .* line\ 38 .*
 }sx, '3-file test for getlines (with anvl)';
 
 remove_td();
-# remove_td();
-
 }
 
 {	# anvl_name_naturalize

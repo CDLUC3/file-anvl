@@ -18,7 +18,7 @@ use constant ANVLR	=> 2;
 use constant ANVLS	=> 3;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-0-28 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-1-00 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -71,8 +71,65 @@ sub anvl_opt_defaults { return {
 	};
 }
 
-# xxx change ercspec n2t.info -> n2t.net
 # xxx     decide on good name for short form and long form ERC
+
+# Returns a closure that calls an input handler with a $filehandle arg
+# that's set to *ARGV by default.  If $reader is defined, it names an
+# alternate reader that's called for each next unit of input.
+#
+sub make_get_anvl { my( $filehandle, $reader )=@_;
+
+	# If $filehandle specified, use the Perl <$filehandle> idiom to
+	# return next unit of input (normally a line, but here a para).
+	#
+	$filehandle ||= *ARGV;
+
+	unless ($reader) {
+		my $rec;		# returned record
+		my $s;			# next increment of input
+
+	    return sub {
+
+		local $/ = NL.NL;	# a kind of "paragraph" input mode
+					# $/ === $INPUT_RECORD_SEPARATOR
+		$rec = '';
+		1 while (
+			defined($s = <$filehandle>) and		# read and
+				($rec .= $s),	# save everything, but stop
+				$s !~ /\S/	# when we see substance
+		);
+		defined($s) or
+			return $rec || undef;	# almost eof or real eof
+		return $rec;
+		# XXXX what happens when one file ends prematurely and another
+		# begins? does last record for first file get returned glued
+		# to beginning of first recond of 2nd file?  If more than one
+		# file, line numbers normally just accumulate.  We want to
+		# preserve line numbers within files, so we use this next
+		# Perl idiom to cause $. (linenum) to be reset between files.
+		#
+		#close ARGV	if eof;	# reset line numbers between files
+	    };
+	}
+
+	# If we get here, $from_bdb should reference an input method.
+	#
+	ref($reader) eq "CODE"		or return undef;
+
+	my $rec;		# returned record
+	my $s;			# next increment of input
+	return sub {
+		$rec = '';
+		1 while (
+			defined($s = &reader($filehandle, @_)) and  # read and
+				($rec .= $s),	# save everything, but stop
+				$s !~ /\S/	# when we see substance
+		);
+		defined($s) or
+			return $rec || undef;	# almost eof or real eof
+		return $rec;
+	};
+}
 
 sub getlines { my( $filehandle )=@_;
 
@@ -672,12 +729,13 @@ sub erc_anvl_expand_array { my( $r_elems )=@_;
 
 # xxx anvl_fmt not consistent with om_anvl!
 
-sub anvl_om { my( $om, $o )		= (shift, shift);
+sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 
 	return "anvl_om: 1st arg not an OM object"
 		if ref($om) !~ /^File::OM::/;
 	my $p = $om->{outhandle};	# whether 'print' status or small
 	$o ||= anvl_opt_defaults();
+	$get_anvl ||= File::ANVL::make_get_anvl();	# default is getlines()
 
 	my $s = '';			# output strings are returned to $s
 	my $st = $p ? 1 : '';		# returns (stati or strings) accumulate
@@ -705,12 +763,29 @@ sub anvl_om { my( $om, $o )		= (shift, shift);
 
 		# Get paragraph (ANVL record) and count lines therein.
 		#
-		$anvlrec = trimlines(getlines(), \$wslines, \$rrlines);
+# XXX replace getlines() with a method reference that pulls ANVL
+#     directly from whereever, esp. from a BDB database
+		#$anvlrec = trimlines(getlines(), \$wslines, \$rrlines);
+		$anvlrec = trimlines(&$get_anvl(), \$wslines, \$rrlines);
 		$startline += $wslines;
 		last		unless $anvlrec;
 
 		$recnum++;		# increment record counter
-
+=for later
+# XXX anvl_recarray is expensive, do we _need_ to do it if the output is
+#     also in anvl?  Maybe call modified [2] here so "find" can work?
+		if (ref($om) eq 'File::OM::ANVL' and ! $r_elem_order) {
+			# xxx do quick expand (short->long erc) here?
+			#     xxx _will_ disturb input line numbering
+			$$o{find} and ($anvlrec !~ /$$o{find}/m) and
+				next;		# no output has occurred
+			# xxx do quick check for 'show' and next
+			# XXXXXXXX must define lineno for verbose case
+			$s = $om->anvl_rec($anvlrec, $startline, $rrlines);
+			$p and ($st &&= $s), 1 or ($st .= $s);
+			next;
+		}
+=cut
 		$msg = anvl_recarray($anvlrec, $r_elems, $startline, $o);
 		$msg =~ /^error/	and return "anvl_recarray: $msg";
 
@@ -719,7 +794,7 @@ sub anvl_om { my( $om, $o )		= (shift, shift);
 		# on a short form ANVL record.
 		#
 		$$o{find} and ($anvlrec !~ /$$o{find}/m) and
-			next;
+			next;		# no output has occurred
 
 		# If caller has set $$o{elemsproc} to a code reference,
 		# it is called to process the element array just returned
@@ -733,6 +808,8 @@ sub anvl_om { my( $om, $o )		= (shift, shift);
 			(! ($pat = $$o{elemsprocpat}))	# no pattern or
 				|| $anvlrec =~ $pat) {	# the pattern matches
 
+# [2] XXX can we call elemsproc directly on the $anvlrec? so we don't need
+#     to call expensive anvl_recarray first?
 			($msg = &{$$o{elemsproc}}($r_elems)) and
 				return "File::ANVL::elemsproc: $msg";
 		}
@@ -748,6 +825,8 @@ sub anvl_om { my( $om, $o )		= (shift, shift);
 		# on line 5").  $r_elems and $r_elem_order are needed for
 		# discovering what elements will populate CSV/PSV records.
 		#
+# XXX this next isn't needed if output is anvl ?!  (assuming final NL is
+# written when closing the record
 		$s = $om->orec($recnum, $startline, $r_elems, $r_elem_order);
 		$p and ($st &&= $s), 1 or ($st .= $s);
 
@@ -759,12 +838,17 @@ sub anvl_om { my( $om, $o )		= (shift, shift);
 			$nemax = scalar @$r_elem_order;
 		} else {
 			$n = 			# index into $$r_elems
+# XXX don't reference r_elems if we haven't called anvl_recarray
 				$$r_elems[2]	# if a no-label value starts
 					? -3	# rec, make sure to output it,
 					: 0;	# else skip it (normal)
 			$nmax = scalar @$r_elems;
 		}
 
+# XXX if output is to anvl, can we not skip the entire loop below? but
+# not if it's possible to output anvl _and_ to care about element order
+# XXX but still perform $show check and skip not-shown elems
+# XXX and still perform value inversion if {invert} options
 		$elemnum = 0;			# true elements, not comments
 		undef $name;
 		while (1) {
@@ -822,9 +906,10 @@ sub anvl_om { my( $om, $o )		= (shift, shift);
 			$p and ($st &&= $s), 1 or ($st .= $s);
 			undef $name;		# clean the slate
 		}
-
 		$s = $om->crec($recnum);
 		$p and ($st &&= $s), 1 or ($st .= $s);
+	}
+	continue {
 		$startline += $rrlines;
 	}
 	$s = $om->cstream();

@@ -9,7 +9,7 @@ use strict;
 use warnings;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-0-29 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-1-00 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -214,6 +214,69 @@ sub elem {	# OM::ANVL
 		return $s;
 }
 
+# XXX need something that will spit out whole input ANVL record
+sub anvl_rec {	# OM::ANVL
+	my $self = shift;
+	my $rec = shift;
+# XXX ignore lineno for now
+	my ($name, $value, $lineno, $elemnum) = (shift, shift, shift, shift);
+	my ($s, $z) = ('', '');		# built string and catchup string
+
+	$self->{record_is_open} or	# call orec() to open record first
+		($z =  $self->orec(undef, $lineno),	# may call ostream()
+		$self->{record_is_open} = 1);
+	$self->{outhandle}	or $s .= $z;	# don't retain print status
+
+	#defined($elemnum) and
+	#	$self->{elemnum} = $elemnum
+	#or
+	#	$self->{elemnum}++;
+
+	# Parse $lineno, which is empty or has form LinenumType, where
+	# Type is either ':' (real element) or '#' (comment).
+	defined($lineno)	or $lineno = '1:';
+	my ($num, $type) =
+		$lineno =~ /^(\d*)\s*(.)/;
+
+	use Text::Wrap;		# recommends localizing next two settings
+	local $Text::Wrap::columns = $self->{wrap};
+	local $Text::Wrap::huge = 'overflow';
+
+	if ($type eq '#') {
+		$self->{element_name} = undef;	# indicates comment
+		$self->{elemnum}--;		# doesn't count as an element
+		$s .= Text::Wrap::wrap(		# wrap lines with '#' as
+			'#',			# first line "indent" and
+			'# ',			# '# ' for all other indents
+			$self->comment_encode($value)	# main part to wrap
+		);
+		$s .= "\n";			# close comment
+	}
+# XXX what if ref($value) eq "ARRAY" -> can be used for repeated vals?
+# XXX does undefined $name mean comment?
+# XXX document what undef for $name means
+	elsif (defined $name) {			# no element if no name
+	# XXX would it look cooler with :\t after the label??
+		# xxx this should be stacked
+		$self->{element_name} = $self->name_encode($name);
+		my $enc_val = $self->value_encode($value);	# encoded value
+		$s .= $enc_val =~ /^\s*$/ ?		# wrap() loses label of
+			"$self->{element_name}:$enc_val" :	# blank value
+			Text::Wrap::wrap(		# wrap lines; this 1st
+				$self->{element_name}	# "indent" won't break
+					. ':',		# label across lines
+				"\t",			# tab for other indents
+				$enc_val)		# main part to wrap
+		;
+		$s .= "\n";
+		# M_ELEMENT and C_ELEMENT would start here
+	}
+	$self->{outhandle} and
+		return (print { $self->{outhandle} } $s)
+	or
+		return $s;
+}
+
 sub orec {	# OM::ANVL
 	my $self = shift;
 	my ($recnum, $lineno) = (shift, shift);
@@ -278,6 +341,7 @@ sub cstream {	# OM::ANVL
 		return $s;
 }
 
+# XXX don't we need to look out for \n in names?
 sub name_encode {	# OM::ANVL
 	my ($self, $s) = (shift, shift);
 	defined($s)		or return '';
