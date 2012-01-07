@@ -9,7 +9,7 @@ use strict;
 use warnings;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-1-00 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-1-01 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -19,6 +19,10 @@ our @EXPORT = qw();
 our @EXPORT_OK = qw();
 
 our %EXPORT_TAGS = (all => [ @EXPORT_OK ]);
+
+use Text::Wrap;		# which recommends localizing next two settings
+			# local $Text::Wrap::columns = $self->{wrap};
+			# local $Text::Wrap::huge = 'overflow';
 
 our %outputformats = (
 	anvl	=> 'ANVL',
@@ -150,6 +154,13 @@ sub rec2hdr { my( $r_elems )			= (shift);
 	return $r_elem_order;
 }
 
+# Called in place of TextWrap::Wrap::wrap, returns string without wrapping.
+# Second arg is a dummy.
+#
+sub text_nowrap { my( $line1ind, $line2ind, $val)=(shift, shift, shift);
+		return $line1ind . $val;
+}
+
 package File::OM::ANVL;
 
 our @ISA = ('File::OM');
@@ -175,14 +186,20 @@ sub elem {	# OM::ANVL
 	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
 
-	use Text::Wrap;		# recommends localizing next two settings
-	local $Text::Wrap::columns = $self->{wrap};
-	local $Text::Wrap::huge = 'overflow';
+	local ($Text::Wrap::columns, $Text::Wrap::huge);
+	my $wrapper;
+	$self->{wrap} and
+		($wrapper, $Text::Wrap::columns, $Text::Wrap::huge) =
+			(\&Text::Wrap::wrap, $self->{wrap}, 'overflow')
+	or
+		$wrapper = \&File::OM::text_nowrap;
+	;
 
 	if ($type eq '#') {
 		$self->{element_name} = undef;	# indicates comment
 		$self->{elemnum}--;		# doesn't count as an element
-		$s .= Text::Wrap::wrap(		# wrap lines with '#' as
+		#$s .= Text::Wrap::wrap(		# wrap lines with '#' as
+		$s .= &$wrapper(		# wrap lines with '#' as
 			'#',			# first line "indent" and
 			'# ',			# '# ' for all other indents
 			$self->comment_encode($value)	# main part to wrap
@@ -199,7 +216,8 @@ sub elem {	# OM::ANVL
 		my $enc_val = $self->value_encode($value);	# encoded value
 		$s .= $enc_val =~ /^\s*$/ ?		# wrap() loses label of
 			"$self->{element_name}:$enc_val" :	# blank value
-			Text::Wrap::wrap(		# wrap lines; this 1st
+			#Text::Wrap::wrap(		# wrap lines; this 1st
+			&$wrapper(			# wrap lines; this 1st
 				$self->{element_name}	# "indent" won't break
 					. ':',		# label across lines
 				"\t",			# tab for other indents
@@ -238,14 +256,21 @@ sub anvl_rec {	# OM::ANVL
 	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
 
-	use Text::Wrap;		# recommends localizing next two settings
-	local $Text::Wrap::columns = $self->{wrap};
-	local $Text::Wrap::huge = 'overflow';
+	local ($Text::Wrap::columns, $Text::Wrap::huge);
+	my $wrapper;
+	$self->{wrap} and
+		($wrapper, $Text::Wrap::columns, $Text::Wrap::huge) =
+			(\&Text::Wrap::wrap, $self->{wrap}, 'overflow')
+	or
+		$wrapper = \&File::OM::text_nowrap;
+	;
+
 
 	if ($type eq '#') {
 		$self->{element_name} = undef;	# indicates comment
 		$self->{elemnum}--;		# doesn't count as an element
-		$s .= Text::Wrap::wrap(		# wrap lines with '#' as
+		#$s .= Text::Wrap::wrap(		# wrap lines with '#' as
+		$s .= &$wrapper(		# wrap lines with '#' as
 			'#',			# first line "indent" and
 			'# ',			# '# ' for all other indents
 			$self->comment_encode($value)	# main part to wrap
@@ -262,7 +287,7 @@ sub anvl_rec {	# OM::ANVL
 		my $enc_val = $self->value_encode($value);	# encoded value
 		$s .= $enc_val =~ /^\s*$/ ?		# wrap() loses label of
 			"$self->{element_name}:$enc_val" :	# blank value
-			Text::Wrap::wrap(		# wrap lines; this 1st
+			&$wrapper(			# wrap lines; this 1st
 				$self->{element_name}	# "indent" won't break
 					. ':',		# label across lines
 				"\t",			# tab for other indents
@@ -422,16 +447,22 @@ sub elem {	# OM::CSV
 	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
 
-	use Text::Wrap;		# recommends localizing next two settings
-	local $Text::Wrap::columns = $self->{wrap};
-	local $Text::Wrap::huge = 'overflow';
+	local ($Text::Wrap::columns, $Text::Wrap::huge);
+	my $wrapper;
+	$self->{wrap} and
+		($wrapper, $Text::Wrap::columns, $Text::Wrap::huge) =
+			(\&Text::Wrap::wrap, $self->{wrap}, 'overflow')
+	or
+		$wrapper = \&File::OM::text_nowrap;
+	;
+
 
 	$self->{elemnum} > 1 and	# we've output an element already,
 		$s .= ",";		# so output a separator character
 
 	if ($type eq '#') {
 		$self->{element_name} = undef;	# indicates comment
-		$s .= Text::Wrap::wrap(		# wrap lines with '#' as
+		$s .= &$wrapper(		# wrap lines with '#' as
 			'#',			# first line "indent" and
 			'# ',			# '# ' for all other indents
 			$self->comment_encode($value)	# main part to wrap
@@ -441,7 +472,7 @@ sub elem {	# OM::CSV
 		# xxx this should be stacked
 		$self->{element_name} = $self->name_encode($name);
 		my $enc_val = 
-		$s .= Text::Wrap::wrap('', '',
+		$s .= &$wrapper('', '',
 			$self->value_encode($value));	# encoded value
 		# M_ELEMENT and C_ELEMENT would start here
 	}
@@ -730,14 +761,19 @@ sub elem {	# OM::Plain
 	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
 
-	use Text::Wrap;		# recommends localizing next two settings
-	local $Text::Wrap::columns = $self->{wrap};
-	local $Text::Wrap::huge = 'overflow';
+	local ($Text::Wrap::columns, $Text::Wrap::huge);
+	my $wrapper;
+	$self->{wrap} and
+		($wrapper, $Text::Wrap::columns, $Text::Wrap::huge) =
+			(\&Text::Wrap::wrap, $self->{wrap}, 'overflow')
+	or
+		$wrapper = \&File::OM::text_nowrap;
+	;
 
 	if ($type eq '#') {			# Plain pseudo-comment!
 		$self->{element_name} = undef;	# indicates comment
 		$self->{elemnum}--;		# doesn't count as an element
-		$s .= Text::Wrap::wrap(		# wrap lines with '#' as
+		$s .= &$wrapper(		# wrap lines with '#' as
 			'#',			# first line "indent" and
 			'# ',			# '# ' for all other indents
 			$self->comment_encode($value)	# main part to wrap
@@ -747,7 +783,7 @@ sub elem {	# OM::Plain
 	elsif (defined($value) and defined($name)) {	# no element if no name
 		# It is a feature of Plain not to print if value is empty.
 		$self->{element_name} = $self->name_encode($name);
-		$s .= Text::Wrap::wrap(		# wrap lines with '' as
+		$s .= &$wrapper(		# wrap lines with '' as
 			'',			# first line "indent" and
 			'',			# '' for all other indents
 			$self->value_encode($value)	# main part to wrap
@@ -865,16 +901,22 @@ sub elem {	# OM::PSV
 	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
 
-	use Text::Wrap;		# recommends localizing next two settings
-	local $Text::Wrap::columns = $self->{wrap};
-	local $Text::Wrap::huge = 'overflow';
+	local ($Text::Wrap::columns, $Text::Wrap::huge);
+	my $wrapper;
+	$self->{wrap} and
+		($wrapper, $Text::Wrap::columns, $Text::Wrap::huge) =
+			(\&Text::Wrap::wrap, $self->{wrap}, 'overflow')
+	or
+		$wrapper = \&File::OM::text_nowrap;
+	;
+
 
 	$self->{elemnum} > 1 and	# we've output an element already,
 		$s .= "|";		# so output a separator character
 
 	if ($type eq '#') {
 		$self->{element_name} = undef;	# indicates comment
-		$s .= Text::Wrap::wrap(		# wrap lines with '#' as
+		$s .= &$wrapper(		# wrap lines with '#' as
 			'#',			# first line "indent" and
 			'# ',			# '# ' for all other indents
 			$self->comment_encode($value)	# main part to wrap
@@ -884,7 +926,7 @@ sub elem {	# OM::PSV
 		# xxx this should be stacked
 		$self->{element_name} = $self->name_encode($name);
 		my $enc_val = 
-		$s .= Text::Wrap::wrap('', '',
+		$s .= &$wrapper('', '',
 			$self->value_encode($value));	# encoded value
 		# M_ELEMENT and C_ELEMENT would start here
 	}
@@ -1190,9 +1232,15 @@ sub elem {	# OM::XML
 	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
 
-	use Text::Wrap;		# recommends localizing next two settings
-	local $Text::Wrap::columns = $self->{wrap};
-	local $Text::Wrap::huge = 'overflow';
+	local ($Text::Wrap::columns, $Text::Wrap::huge);
+	my $wrapper;
+	$self->{wrap} and
+		($wrapper, $Text::Wrap::columns, $Text::Wrap::huge) =
+			(\&Text::Wrap::wrap, $self->{wrap}, 'overflow')
+	or
+		$wrapper = \&File::OM::text_nowrap;
+	;
+
 
 	if ($type eq '#') {
 		# xxx this should be stacked
@@ -1203,7 +1251,7 @@ sub elem {	# OM::XML
 		$s .= $enc_com =~ /^\s*$/ ?		# wrap() loses label of
 			$self->{indent} .		# a blank value so put
 				"<!--$enc_com" :	# here instead
-			Text::Wrap::wrap(		# wrap lines; this 1st
+			&$wrapper(		# wrap lines; this 1st
 				"$self->{indent}<!--",	# "indent" won't break
 				$self->{indent},	# other line indents
 				$enc_com)		# main part to wrap
@@ -1224,7 +1272,7 @@ sub elem {	# OM::XML
 		$s .= $enc_val =~ /^\s*$/ ?		# wrap() loses label of
 			$self->{indent} .		# a blank value so put
 				"<$self->{element_name}>" :	# here instead
-			Text::Wrap::wrap(		# wrap lines; this 1st
+			&$wrapper(		# wrap lines; this 1st
 				$self->{indent} .	# "indent" won't break
 					"<$self->{element_name}>",	# label
 				$self->{indent},	# other line indents

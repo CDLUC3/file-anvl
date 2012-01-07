@@ -150,6 +150,13 @@ is $om->elem('abracadabra', 'cd ef gh ij kl mn op', '#'),
 # kl mn op
 ',	'ANVL comment wrap';
 
+$om = File::OM->new("anvl", {wrap=>0});
+is $om->elem('erc', ''), 'erc:
+',	'nowrap with label and empty value';
+
+like $om->elem('ab', 'cd ef gh' x 300), qr/^ab: .{2400}\n$/,
+	'ANVL elem nowrap with one 2400-char line';
+
 $om = File::OM->new("plain", {wrap=>14});
 
 is $om->elem('abracadabra', 'cd ef gh ij kl mn op', '#'),
