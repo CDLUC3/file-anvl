@@ -63,37 +63,32 @@ my $om = File::OM->new("anvl");
 is $om->elems("
 a b::d
 
-", "  	
+", "
 e f g
 h i
 
-"), "a b%3a%3ad: e f g
-	h i
-", 'trim plus %encode';
+"), "%0aa%20b%3a%3ad%0a%0a: %0ae f g%0ah i%0a%0a
+", '%encode newlines, spaces, and colons in element name';
+
+is $om->elems('b   c', "e  f  g"), 'b%20%20%20c: e  f  g
+', '%encode spaces and tabs in element name';
 
 is $om->elems(" label", "  now is"),
-"label: now is
-", 'one-line trim with newline added';
+"%20label:   now is
+", 'initial space encode with newline added';
 
 is $om->elems("
 label", " now is
    a
    b
-   c d"), "label: now is
-	   a
-	   b
-	   c d
-", 'multi-line, initial newline trim';
+   c d"), "%0alabel:  now is%0a   a%0a   b%0a   c d
+", 'multi-line, initial newline encode';
 
 is $om->elems("label", "
 now is
    a
    b
-   c d"), "label:
-	now is
-	   a
-	   b
-	   c d
+   c d"), "label: %0anow is%0a   a%0a   b%0a   c d
 ", 'multi-line preserving first newline';
 
 is $om->elems("label", "now is the time for all good men to come to the aid of the party again and again and again."),
@@ -144,7 +139,7 @@ is $elems[4], "erc", 'valueless label';
 is $elems[5], "", 'valueless value';
 is $elems[6], "2:", 'second line number';
 is $elems[7], "who", 'first real element label';
-is $elems[8], "creator1; creator2; creator3", 'first real element value';
+is $elems[8], "creator1;%0acreator2; creator3", 'first real element value';
 is $elems[13], "when", 'third element label';
 is $elems[14], "18990304", 'third element value';
 is $elems[16], "where", 'fourth label';

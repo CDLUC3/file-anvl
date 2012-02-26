@@ -42,7 +42,7 @@ my %opt = (
 		exit 0;
 	}
 
-	defined(@File::ERC::erc_termlist) && %File::ERC::erc_tags or
+	@File::ERC::erc_termlist && %File::ERC::erc_tags or
 		File::ERC::tag2num_init();	# one-time lazy definition
 
 	my $ret = 0;

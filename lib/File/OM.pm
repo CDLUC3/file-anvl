@@ -9,7 +9,7 @@ use strict;
 use warnings;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-1-01 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-1-02 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -186,11 +186,12 @@ sub elem {	# OM::ANVL
 	my ($num, $type) =
 		$lineno =~ /^(\d*)\s*(.)/;
 
-	local ($Text::Wrap::columns, $Text::Wrap::huge);
+	local ($Text::Wrap::columns, $Text::Wrap::huge, $Text::Wrap::unexapand);
 	my $wrapper;
 	$self->{wrap} and
-		($wrapper, $Text::Wrap::columns, $Text::Wrap::huge) =
-			(\&Text::Wrap::wrap, $self->{wrap}, 'overflow')
+		($wrapper, $Text::Wrap::columns, $Text::Wrap::huge,
+			$Text::Wrap::unexpand) =
+		(\&Text::Wrap::wrap, $self->{wrap}, 'overflow', 0)
 	or
 		$wrapper = \&File::OM::text_nowrap;
 	;
@@ -214,9 +215,9 @@ sub elem {	# OM::ANVL
 		# xxx this should be stacked
 		$self->{element_name} = $self->name_encode($name);
 		my $enc_val = $self->value_encode($value);	# encoded value
+
 		$s .= $enc_val =~ /^\s*$/ ?		# wrap() loses label of
 			"$self->{element_name}:$enc_val" :	# blank value
-			#Text::Wrap::wrap(		# wrap lines; this 1st
 			&$wrapper(			# wrap lines; this 1st
 				$self->{element_name}	# "indent" won't break
 					. ':',		# label across lines
@@ -366,16 +367,25 @@ sub cstream {	# OM::ANVL
 		return $s;
 }
 
-# XXX don't we need to look out for \n in names?
 sub name_encode {	# OM::ANVL
 	my ($self, $s) = (shift, shift);
 	defined($s)		or return '';
-	$s =~ s/^\s+//;
-	$s =~ s/\s+$//;		# trim both ends
-	$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
+	#$s =~ s/^\s+//;
+	#$s =~ s/\s+$//;		# trim both ends
+	#$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
+# xxx keep doubling %?
 	$s =~ s/%/%%/g;		# to preserve literal %, double it
+# xxx what about granvl?
 				# yyy must be decoded by receiver
-	$s =~ s/:/%3a/g;	# URL-encode all colons (%cn)
+	#$s =~ s/:/%3a/g;	# URL-encode all colons (%cn)
+
+	# XXXX should not URL-encode the first 'space' in a run of
+	# whitespace
+	$s =~ s{		# URL-encode all colons and whitespace
+		([=:<\s])	# \s matches [ \t\n\f] etc.
+	}{			# = and < anticipate ANVL extensions
+		sprintf("%%%02x", ord($1))	# replacement hex code
+	}xeg;
 
 	return $s;
 
@@ -385,28 +395,40 @@ sub name_encode {	# OM::ANVL
 	#     or if not namespace, foo:bar ->? foo%xxbar
 }
 
+# Encoding of names and values is done upon output in ANVL.
+# Default is to wrap long lines.
+
 sub value_encode {	# OM::ANVL
 	my ($self, $s, $anvl_mode) = (shift, shift, shift);
 	defined($s)		or return '';
 	$anvl_mode ||= 'ANVL';
 
 	my $value = $s;			# save original value
-	my ($initial_newlines) =	# save initial newlines
-		$s =~ /^(\n*)/;		# always defined, often ""
+	#my ($initial_newlines) =	# save initial newlines
+	#	$s =~ /^(\n*)/;		# always defined, often ""
 
-	# value after colon starts with either preserved newlines,
+	## value after colon starts with either preserved newlines,
 	#	a space, or, if value is "" (as opposed to 0), nothing
-	my $value_start = $initial_newlines || ($value eq "" ? '' : ' ');
+	#
+	#my $value_start = $initial_newlines || ($value eq "" ? '' : ' ');
+	#my $value_start = $initial_newlines || ($value eq "" ? '' : ' ');
+	my $value_start = $value eq "" ? '' : ' ';
+
 	#my $value_start = $initial_newlines || ($value ? ' ' : '');
 	# xxxx is this the right place to enforce the space after ':'?
 
 	# xxx is there a linear whitespace char class??
 	#     problem is that \s includes \n
-	$s =~ s/^\s+//;
-	$s =~ s/\s+$//;		# trim both ends
+	#$s =~ s/^\s+//;
+	#$s =~ s/\s+$//;		# trim both ends
 
 	$s =~ s/%/%%/g;		# to preserve literal %, double it
 				# yyy must be decoded by receiver
+	$s =~ s{		# URL-encode newlines in portable way
+		(\n)		# \n matches all platforms' ends of lines
+	}{			#
+		sprintf("%%%02x", ord($1))	# replacement hex code
+	}xeg;
 	if ($anvl_mode eq 'ANVLS') {
 		$s =~ s/\|/%7c/g;	# URL-encode all vertical bars (%vb)
 		$s =~ s/;/%3b/g;	# URL-encode all semi-colons (%sc)
@@ -570,9 +592,9 @@ sub name_encode {	# OM::CSV
 	defined($s)		or return '';
 
 	# yyy should names be put inside double quotes?
-	$s =~ s/^\s+//;
-	$s =~ s/\s+$//;		# trim both ends
-	$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
+	#$s =~ s/^\s+//;
+	#$s =~ s/\s+$//;		# trim both ends
+	#$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
 	$s =~ s/"/""/g;		# double all internal double-quotes
 
 	return $s;
@@ -583,8 +605,10 @@ sub value_encode {	# OM::CSV
 	defined($s)		or return '';
 
 	$s =~ s/"/""/g;		# double all internal double-quotes
-	$s =~ s/^\s*/"/;
-	$s =~ s/\s*$/"/;	# trim both ends and double-quote
+	$s =~ s/^/"/;
+	$s =~ s/$/"/;
+	#$s =~ s/^\s*/"/;
+	#$s =~ s/\s*$/"/;	# trim both ends and double-quote
 
 	return $s;
 }
@@ -595,8 +619,10 @@ sub comment_encode {	# OM::CSV
 	defined($s)		or return '';
 
 	$s =~ s/"/""/g;		# double all internal double-quotes
-	$s =~ s/^\s*/"/;
-	$s =~ s/\s*$/"/;	# trim both ends and double-quote
+	$s =~ s/^/"/;
+	$s =~ s/$/"/;
+	#$s =~ s/^\s*/"/;
+	#$s =~ s/\s*$/"/;	# trim both ends and double-quote
 
 	return $s;
 }
@@ -1023,9 +1049,11 @@ sub name_encode {	# OM::PSV
 	my ($self, $s) = (shift, shift);
 	defined($s)		or return '';
 
-	$s =~ s/^\s+//;
-	$s =~ s/\s+$//;		# trim both ends
-	$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
+	# xxx document how we don't trim, but encode spaces
+	# xxxxxxx and then encode!!
+	#$s =~ s/^\s+//;
+	#$s =~ s/\s+$//;		# trim both ends
+	#$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
 	$s =~ s/%/%%/g;		# to preserve literal %, double it
 				# yyy must be decoded by receiver
 	$s =~ s/\|/%7c/g;	# URL-encode all colons
@@ -1038,9 +1066,11 @@ sub value_encode {	# OM::PSV
 	my ($self, $s) = (shift, shift);
 	defined($s)		or return '';
 
-	$s =~ s/^\s+//;
-	$s =~ s/\s+$//;		# trim both ends
-	$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
+	# xxx document how we don't trim, but encode spaces
+	# xxxxxxx and then encode!!
+	#$s =~ s/^\s+//;
+	#$s =~ s/\s+$//;		# trim both ends
+	#$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
 	$s =~ s/%/%%/g;		# to preserve literal %, double it
 				# yyy must be decoded by receiver
 	$s =~ s/\|/%7c/g;	# URL-encode all colons

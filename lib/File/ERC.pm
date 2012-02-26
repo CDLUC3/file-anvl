@@ -5,7 +5,7 @@ use strict;
 use warnings;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-1-01 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-1-02 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -88,7 +88,7 @@ sub tag2num_init {
 
 sub tag2num {
 
-	defined(@erc_termlist) && %erc_tags or
+	@erc_termlist && %erc_tags or
 		tag2num_init();		# one-time lazy definition
 	my (@ret, $tag);
 	foreach $tag (@_) {
