@@ -18,7 +18,7 @@ use constant ANVLR	=> 2;
 use constant ANVLS	=> 3;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-1-02 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-1-03 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -141,11 +141,12 @@ sub getlines { my( $filehandle )=@_;
 	# return next unit of input (normally a line, but here a para).
 	#
 	$filehandle ||= *ARGV;
-	1 while (
-		defined($s = <$filehandle>) and		# read and
-			($rec .= $s),	# save everything, but stop
-			$s !~ /\S/	# when we see substance
-	);
+	1 while (			# read paragraphs, which may include
+		defined($s = <$filehandle>) and		# lots of whitespace-
+			($rec .= $s),	# only "paragraphs"; save everything
+			$s !~ /^\s*[^#\s]/m	# but stop when substance seen
+			#$s !~ /\S/	# but stop when we see substance
+	); # /^\s*[^#\s]/m
 	defined($s) or
 		return $rec || undef;	# almost eof or real eof
 	return $rec;
@@ -373,6 +374,9 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 		split /\n*^(\d+[:#])([^\s:][^:]*):/m
 
 	);
+
+	defined($$r_elems[2]) or
+		return "error: split failed on '$record', record $linenum";
 
 	# If there was a value with no label at the start of the record,
 	# we deem that interesting enough to keep even though it's not

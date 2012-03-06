@@ -60,7 +60,31 @@ use File::ANVL;
 remake_td();
 
 my $x;
-my $recstream = "a: b
+my $recstream;
+
+$recstream = "# just a comment
+# record
+
+# now another record
+a: b
+";
+
+$x = filval(">$td/file", $recstream);
+$x = `$cmd < $td/file`;
+like $x, qr{xxx
+}xs, 'all comment no content record';
+
+$recstream = "#K:values
+#  
+";
+
+$x = filval(">$td/file", $recstream);
+$x = `$cmd < $td/file`;
+like $x, qr{xxx
+}xs, 'comment beginning #K: error';
+
+
+$recstream = "a: b
 c: d
 ";
 
