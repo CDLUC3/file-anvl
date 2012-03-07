@@ -146,6 +146,7 @@ sub getlines { my( $filehandle )=@_;
 			($rec .= $s),	# only "paragraphs"; save everything
 			$s !~ /^\s*[^#\s]/m	# but stop when substance seen
 			#$s !~ /\S/	# but stop when we see substance
+			#
 	); # /^\s*[^#\s]/m
 	defined($s) or
 		return $rec || undef;	# almost eof or real eof
