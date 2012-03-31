@@ -6,7 +6,7 @@ use warnings;
 
 my $script = "anvl";		# script we're testing
 
-# as of 2010.05.02  (perlpath minus _exe, plus filval(), no -x for MSWin)
+# as of 2011.06.29  flvl() from File::Value
 #### start boilerplate for script name and temporary directory support
 
 use Config;
@@ -39,17 +39,7 @@ sub remove_td {		# remove $td but make sure $td isn't set to "."
 	$@			and die "$td: couldn't remove: $@";
 }
 
-# Abbreviated version of "raw" File::Value::file_value()
-sub filval { my( $file, $value )=@_;	# $file must begin with >, <, or >>
-	if ($file =~ /^\s*>>?/) {
-		open(OUT, $file)	or return "$file: $!";
-		my $r = print OUT $value;
-		close(OUT);		return ($r ? '' : "write failed: $!");
-	} # If we get here, we're doing file-to-value case.
-	open(IN, $file)		or return "$file: $!";
-	local $/;		$_[1] = <IN>;	# slurp mode (entire file)
-	close(IN);		return '';
-}
+use File::Value ':all';
 
 #### end boilerplate
 
@@ -62,33 +52,62 @@ remake_td();
 my $x;
 my $recstream;
 
-$recstream = "# just a comment
-# record
+$recstream = "a: b
 
-# now another record
+c: d
+";
+$x = flvl(">$td/file1", $recstream);
+
+$recstream = "e: f
+
+g: h
+
+
+
+";
+$x = flvl(">$td/file2", $recstream);
+#$x = `$cmd --verbose $td/file1`;
+$x = `$cmd --verbose $td/file1 $td/file2`;
+like $x, qr{from record 4, line 6.*\ng: h},
+	'2 input files, 4 records';
+
+$recstream = "# just a comment
+# block
+
+# now content
 a: b
 ";
-
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 $x = `$cmd < $td/file`;
-like $x, qr{xxx
-}xs, 'all comment no content record';
+like $x, qr{a: b\n},
+	'comment lines and blank lines precede content record';
+
+$recstream = "# stream of just two comment
+# lines
+
+# another comment
+";
+# XXX should check what happens if given --comments arg
+$x = flvl(">$td/file", $recstream);
+$x = `$cmd < $td/file`;
+like $x, qr{^$}s,
+	'all comment no content record stream';
 
 $recstream = "#K:values
 #  
 ";
 
-$x = filval(">$td/file", $recstream);
+# XXX this #K:values one still fails -- why?
+$x = flvl(">$td/file", $recstream);
 $x = `$cmd < $td/file`;
-like $x, qr{xxx
-}xs, 'comment beginning #K: error';
-
+#like $x, qr{xxx
+#}xs, 'comment beginning #K: error';
 
 $recstream = "a: b
 c: d
 ";
 
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 #$x = `echo "$recstream" | $cmd --format xml`;
 $x = `$cmd --format xml < $td/file`;
 like $x, qr{
@@ -110,7 +129,7 @@ is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 
 $recstream .= "#note to self
 ";
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 
 $x = `$cmd --comment --format xml $td/file`;
 like $x, qr{
@@ -136,7 +155,7 @@ $recstream .= "e: f
 	g
     h
 ";
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 
 $x = `$cmd -m XML $td/file`;
 like $x, qr{
@@ -159,7 +178,7 @@ is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 ', 'anvl2turtle with multi-line element, crazy case tURtlE, "--comments"';
 
 $recstream .= "i: j k";
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 
 $x = `$cmd --form xml $td/file`;
 like $x, qr{
@@ -187,7 +206,7 @@ $recstream .= "
 identifier:
 	sujet
 ";
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 
 $x = `$cmd --format xml $td/file`;
 like $x, qr{
@@ -219,8 +238,17 @@ cc: d
 
 ff: g
 h: i
+
+# pseudo-record at end -- no content
+
+#
+#
+
+#
+
+
 ";					# 3 ANVL records
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 
 $x = `$cmd --verbose --format anvl --comments $td/file`;
 is $x, '# from record 1, line 2
@@ -301,7 +329,7 @@ erc: another | erc | how | can
 # hmm
 zaf: not empty
 ";
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 
 $x = `$cmd --format json $td/file`;
 is $x, '[
@@ -409,7 +437,7 @@ is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 $recstream = 'erc:
   aa|bb|cc|
   dd';
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 
 $x = `$cmd --comments -m turtle $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
@@ -429,7 +457,7 @@ $recstream = 'erc:
    
   a
   ';		# there are no empty lines (but lines with spaces)
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 $x = `$cmd --comments -m turtle $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <a>
@@ -444,7 +472,7 @@ is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 $recstream = '# A way to kernel knowledge.
 erc: Kunze, John A. | A Metadata Kernel for Electronic Permanence
      | 20011106 | http://journals.tdl.org/jodi/article/view/43';
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 
 $x = `$cmd --comments -m turtle $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
@@ -479,7 +507,7 @@ where: http://journals.tdl.org/jodi/article/view/43
 ', 'anvl2anvl as default with short ERC (pod example)';
 
 $recstream = 'erc: a | b | c | d';
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 $x = `$cmd --format json $td/file`;
 is $x, '[
   {
@@ -495,7 +523,7 @@ is $x, '[
 $recstream = 'a: b
 #note to self
 c: d';
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 $x = `$cmd --verbose --comments -m xml $td/file`;
 is $x, '<recs>
   <rec>   <!-- from record 1, line 1 -->

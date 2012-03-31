@@ -6,7 +6,7 @@ use warnings;
 
 my $script = "anvl";		# script we're testing
 
-# as of 2010.05.02  (perlpath minus _exe, plus filval(), no -x for MSWin)
+# as of 2011.06.29  flvl() from File::Value
 #### start boilerplate for script name and temporary directory support
 
 use Config;
@@ -39,21 +39,11 @@ sub remove_td {		# remove $td but make sure $td isn't set to "."
 	$@			and die "$td: couldn't remove: $@";
 }
 
-# Abbreviated version of "raw" File::Value::file_value()
-sub filval { my( $file, $value )=@_;	# $file must begin with >, <, or >>
-	if ($file =~ /^\s*>>?/) {
-		open(OUT, $file)	or return "$file: $!";
-		my $r = print OUT $value;
-		close(OUT);		return ($r ? '' : "write failed: $!");
-	} # If we get here, we're doing file-to-value case.
-	open(IN, $file)		or return "$file: $!";
-	local $/;		$_[1] = <IN>;	# slurp mode (entire file)
-	close(IN);		return '';
-}
+use File::Value ':all';
 
 #### end boilerplate
 
-use File::ANVL qw(:all);	# import everything in EXPORT_OK
+use File::ANVL ':all';	# import everything in EXPORT_OK
 
 {	# ANVL module tests
 
@@ -67,15 +57,15 @@ a b::d
 e f g
 h i
 
-"), "%0aa%20b%3a%3ad%0a%0a: %0ae f g%0ah i%0a%0a
+"), "%0aa b%3a%3ad%0a%0a: %0ae f g%0ah i%0a%0a
 ", '%encode newlines, spaces, and colons in element name';
 
-is $om->elems('b   c', "e  f  g"), 'b%20%20%20c: e  f  g
+is $om->elems('b   c', "e  f  g"), 'b %20%20c: e  f  g
 ', '%encode spaces and tabs in element name';
 
-is $om->elems(" label", "  now is"),
-"%20label:   now is
-", 'initial space encode with newline added';
+is $om->elems(" label ", "  now is"),
+"%20label%20:   now is
+", 'initial and final space encode with newline added';
 
 is $om->elems("
 label", " now is

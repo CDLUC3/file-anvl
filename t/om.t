@@ -8,7 +8,7 @@ use warnings;
 
 my $script = "anvl";		# script we're testing
 
-# as of 2010.05.02  (perlpath minus _exe, plus filval(), no -x for MSWin)
+# as of 2011.06.29  flvl() from File::Value
 #### start boilerplate for script name and temporary directory support
 
 use Config;
@@ -41,17 +41,7 @@ sub remove_td {		# remove $td but make sure $td isn't set to "."
 	$@			and die "$td: couldn't remove: $@";
 }
 
-# Abbreviated version of "raw" File::Value::file_value()
-sub filval { my( $file, $value )=@_;	# $file must begin with >, <, or >>
-	if ($file =~ /^\s*>>?/) {
-		open(OUT, $file)	or return "$file: $!";
-		my $r = print OUT $value;
-		close(OUT);		return ($r ? '' : "write failed: $!");
-	} # If we get here, we're doing file-to-value case.
-	open(IN, $file)		or return "$file: $!";
-	local $/;		$_[1] = <IN>;	# slurp mode (entire file)
-	close(IN);		return '';
-}
+use File::Value ':all';
 
 #### end boilerplate
 
@@ -262,13 +252,13 @@ like $x, qr{</rec>.*</recs>}s,
 # to the avoid nightmare of incompatible -e and shell quotes between
 # Windows and Unix.  This covers a number of tests below.
 
-$x = filval(">$td/file", 'use File::OM; my $x = File::OM->new("ANVL", { outhandle => *STDOUT }); $x->elem("a", "b");');
+$x = flvl(">$td/file", 'use File::OM; my $x = File::OM->new("ANVL", { outhandle => *STDOUT }); $x->elem("a", "b");');
 $x = `perl -Mblib $td/file`;
 is $x, 'a: b
 
 ',	'ANVL implied DESTROY and STDOUT';
 
-$x = filval(">$td/file", 'use File::OM; my $x = File::OM->new("json", { outhandle => *STDOUT }); $x->elem("a", "b");');
+$x = flvl(">$td/file", 'use File::OM; my $x = File::OM->new("json", { outhandle => *STDOUT }); $x->elem("a", "b");');
 $x = `perl -Mblib $td/file`;
 is $x, '[
   {
@@ -277,13 +267,13 @@ is $x, '[
 ]
 ',	'JSON implied DESTROY and STDOUT';
 
-$x = filval(">$td/file", 'use File::OM; my $x = File::OM->new("Plain", { outhandle => *STDOUT }); $x->elem("a", "b");');
+$x = flvl(">$td/file", 'use File::OM; my $x = File::OM->new("Plain", { outhandle => *STDOUT }); $x->elem("a", "b");');
 $x = `perl -Mblib $td/file`;
 is $x, 'b
 
 ',	'Plain implied DESTROY and STDOUT';
 
-$x = filval(">$td/file", 'use File::OM; my $x = File::OM->new("Turtle", { outhandle => *STDOUT }); $x->elem("a", "b");');
+$x = flvl(">$td/file", 'use File::OM; my $x = File::OM->new("Turtle", { outhandle => *STDOUT }); $x->elem("a", "b");');
 $x = `perl -Mblib $td/file`;
 is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 <default>
@@ -291,7 +281,7 @@ is $x, '@prefix erc: <http://purl.org/kernel/elements/1.1/> .
 
 ',	'Turtle implied DESTROY and STDOUT';
 
-$x = filval(">$td/file", 'use File::OM; my $x = File::OM->new("xml", { outhandle => *STDOUT }); $x->elem("a", "b");');
+$x = flvl(">$td/file", 'use File::OM; my $x = File::OM->new("xml", { outhandle => *STDOUT }); $x->elem("a", "b");');
 $x = `perl -Mblib $td/file`;
 is $x, '<recs>
   <rec>

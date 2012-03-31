@@ -379,13 +379,19 @@ sub name_encode {	# OM::ANVL
 				# yyy must be decoded by receiver
 	#$s =~ s/:/%3a/g;	# URL-encode all colons (%cn)
 
-	# XXXX should not URL-encode the first 'space' in a run of
-	# whitespace
 	$s =~ s{		# URL-encode all colons and whitespace
 		([=:<\s])	# \s matches [ \t\n\f] etc.
 	}{			# = and < anticipate ANVL extensions
 		sprintf("%%%02x", ord($1))	# replacement hex code
 	}xeg;
+
+	# This next line takes care of the mainstream case of names that
+	# contain spaces.  It makes sure that for every run of one or more
+	# spaces, the first space won't be encoded.
+	#
+	$s =~ s/%20((?:%20)*)/ $1/g;
+	$s =~ s/^ /%20/;	# but make sure any initial space is encoded
+	$s =~ s/ $/%20/;	# and make sure any final space is encoded
 
 	return $s;
 

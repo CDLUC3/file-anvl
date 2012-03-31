@@ -77,6 +77,15 @@ sub anvl_opt_defaults { return {
 # that's set to *ARGV by default.  If $reader is defined, it names an
 # alternate reader that's called for each next unit of input.
 #
+# The closure for reading lines from a file collects and returns all the
+# lines associated with the next "record", which is considered to start
+# wherever the read pointer happens to be and continues to the first two
+# blank lines encountered that occur after "substance" is detected.
+# Substance is defined to be at least one non-whitespace character
+# occurring on a non-comment line.  Comment and blank lines that precede
+# a record with substance are returned, but any such lines that follow
+# that the final record are discarded.
+#
 sub make_get_anvl { my( $filehandle, $reader )=@_;
 
 	# If $filehandle specified, use the Perl <$filehandle> idiom to
@@ -87,6 +96,7 @@ sub make_get_anvl { my( $filehandle, $reader )=@_;
 	unless ($reader) {
 		my $rec;		# returned record
 		my $s;			# next increment of input
+		my $substance;		# boolean detecting substance
 
 	    return sub {
 
@@ -94,21 +104,20 @@ sub make_get_anvl { my( $filehandle, $reader )=@_;
 					# $/ === $INPUT_RECORD_SEPARATOR
 		$rec = '';
 		1 while (
-			defined($s = <$filehandle>) and		# read and
+			defined($s = <$filehandle>) and	# read to eof and
 				($rec .= $s),	# save everything, but stop
-				$s !~ /\S/	# when we see substance
+				$substance =	# when we detect substance, ie,
+					$s =~ /^[^#\s]/m || $s =~ /^[^#].*\S/m,
+				! $substance	# non-comment with non-space
 		);
-		defined($s) or
-			return $rec || undef;	# almost eof or real eof
-		return $rec;
-		# XXXX what happens when one file ends prematurely and another
-		# begins? does last record for first file get returned glued
-		# to beginning of first recond of 2nd file?  If more than one
-		# file, line numbers normally just accumulate.  We want to
-		# preserve line numbers within files, so we use this next
-		# Perl idiom to cause $. (linenum) to be reset between files.
-		#
-		#close ARGV	if eof;	# reset line numbers between files
+		return $substance ?
+			$rec :	# return either collected record or undef
+			undef;	# any final blank or comment lines are tossed
+
+		# yyy If more than one file, line numbers normally accumulate
+		# across files.  Should we preserve line numbers within each
+		# files?  (If so, use "close ARGV" (Perl idiom) to cause $.
+		# (linenum) to be reset between files.
 	    };
 	}
 
@@ -123,7 +132,8 @@ sub make_get_anvl { my( $filehandle, $reader )=@_;
 		1 while (
 			defined($s = &reader($filehandle, @_)) and  # read and
 				($rec .= $s),	# save everything, but stop
-				$s !~ /\S/	# when we see substance
+				#$s !~ /\S/	# when we see substance
+				! ($s =~ /^[^#\s]/m || $s =~ /^[^#].*\S/m)
 		);
 		defined($s) or
 			return $rec || undef;	# almost eof or real eof
@@ -131,23 +141,52 @@ sub make_get_anvl { my( $filehandle, $reader )=@_;
 	};
 }
 
+# XXX deprecated!  see sub make_get_anvl
 sub getlines { my( $filehandle )=@_;
 
 	my $rec = '';			# returned record
 	my $s;				# next increment of input
 	local $/ = NL.NL;		# a kind of "paragraph" input mode
 					# $/ === $INPUT_RECORD_SEPARATOR
-	# If $filehandle specified, use the Perl <$filehandle> idiom to
+
+	# If $filehandle is specified, use the Perl <$filehandle> idiom to
 	# return next unit of input (normally a line, but here a para).
 	#
 	$filehandle ||= *ARGV;
-	1 while (			# read paragraphs, which may include
-		defined($s = <$filehandle>) and		# lots of whitespace-
-			($rec .= $s),	# only "paragraphs"; save everything
-			$s !~ /^\s*[^#\s]/m	# but stop when substance seen
-			#$s !~ /\S/	# but stop when we see substance
+	1 while ( defined( $s = <$filehandle> ) and	# read up to two \n's
+
+			# If we get here, $s now contains a block to save.
 			#
-	); # /^\s*[^#\s]/m
+			$rec .= $s,
+
+			# We continue reading only if there's no substance,
+			# ie, no line read starts with a non-comment and no
+			# non-comment line read contains non-whitespace
+			#
+			#$s !~ /^[^#\s]/m and	# if no line read starts with
+			#    $s !~ /^[^#].*\S/m	# or contains substance
+			#(! ($s =~ /^[^#\s]/m || $s =~ /^[^#].*\S/m) and
+			#	$rec .= "substance found in <$s>\n"),
+			! ($s =~ /^[^#\s]/m || $s =~ /^[^#].*\S/m)
+		);
+
+			#$s !~ /^\s*[^#\s]/m ||	# match no line of susbstance
+			#$rec .= $s
+
+			#($rec .= $s),	# only "paragraphs"; save everything
+			#$s !~ /^\s*[^#\s]/m	# but stop when substance seen
+
+			#$s !~ /^\s*[^#\s]/m	# but stop when substance seen
+			# and while $s matches no line starting with ^#
+			# while every line in $s is either all whitespace
+			#    or all comment (ie, first non-ws char is #)
+			#$s =~ /\S/	# but stop when we see substance
+			#$s !~ /\S/	# but stop when we see substance
+# substance means \S on a non-comment line
+#        $s !~ /^\S|[^#].*\S/m
+# ! ($s =~ /^[^#\s]/m || $s =~ /^[^#].*\S/m)
+			#
+	#); # /^\s*[^#\s]/m
 	defined($s) or
 		return $rec || undef;	# almost eof or real eof
 	return $rec;
@@ -199,6 +238,7 @@ sub trimlines { my( $rec, $r_wslines, $r_rrlines )=@_;
 # returns empty string on success or string beginning "warning:..."
 # third arg (0 or 1) optional
 # elems is returned array of name value pairs
+#DEPRECATED:
 sub anvl_recsplit { my( $record, $r_elems, $strict )=@_;
 
 	! defined($record) and
@@ -278,6 +318,7 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 	defined($linenum)	or $linenum = 1;
 	$linenum =~ /\D/ and
 		return "error: 3rd arg ($linenum) must be a positive integer";
+# XXX can't this be optimized a bit to keep defaults around?
 	$o ||= anvl_opt_defaults();
 	ref($o) ne "HASH" and
 		return "error: 4th arg must reference a hash";
@@ -291,11 +332,13 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 
 	# Reject some malformed cases.
 	#
-	/\n\n/ and
-		return "error: record should have no internal blank line(s)";
+	#/\n\n/ and
+	#	return "error: record should have no internal blank line(s)";
 	# xxx adjust regexp for ANVLR
-	/^[^\s:][\w 	]*:/m or	# match against first element
-		return "error: record ($_) should begin with a label and colon";
+# XXX fix so record can consist of nothing but comments and/or whitespace;
+#     comments _may_ be recognized in regular records, but not in this kind
+	#/^[^\s:][\w 	]*:/m or	# match against first element
+	#	return "error: record ($_) should begin with a label and colon";
 
 	# Any other unindented line not containing a colon will either
 	# cause an error or will be automatically indented.
@@ -305,20 +348,29 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 	# Now we synthesize stuff (line numbers and pseudo-element names for
 	# any comments) in order to create a uniform structure on each line,
 	# so that we can finally call 'split' to bust apart that structure
-	# into a Perl array in which every 3 elements corresponds to
+	# into a Perl array in which every 3-element group corresponds to
 	#     1. a line number,
 	#     2. a label, and
 	#     3. a value.
 	#
 	# First insert a line number and ":" in front of each line.
 	#
-	s/^/ $linenum++ . ":" /gem;	# put a line number on each line
+	my $num = $linenum;
+	s/^/ $num++ . ":" /gem;	# put a line number on each line
 
-	# Now put a pseudo-element name '#:' on each comment (if any) and
-	# change first ':' separator to '#' for positive identification.
-	# Eg, '# foo' on line 3 becomes '3##:# foo', which conforms to
-	# the eventual split pattern we rely on (at end).
+	# Remove blank lines, now that line numbers have been preserved.
 	#
+	s/^\d+:[^\S\n]*\n//gm;
+
+	# Now, if we're not deleting comments, insert a pseudo-element
+	# name '#:' in front of each comment while also changing the ':'
+	# after the line numer to '#'.  This means that all lines will
+	# begin with a line number followed by ':' for real elements or
+	# by '#' for comment elements.  Eg, '# foo' on line 3 becomes
+	# '3##:# foo', which conforms to the eventual split pattern we
+	# rely on (at end).
+	#
+# xxx problem with line #K:value, which becomes, eg, 4##:K:value
 	$$o{comments} and		# if we're keeping comments
 		s/^(\d+):#/$1##:/gm, 1
 	                #    ^^^
@@ -329,6 +381,11 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 	or				# else completely delete comments
 		s/^\d+:#.*\n//gm	# up to and including final \n
 	;
+	
+	# Return if nothing's left after deleting blank lines and comments.
+	#
+	/^\s*$/s and
+		return "warning: record at line $linenum has no content";
 
 	my $msg = "";			# default return message
 
@@ -361,6 +418,7 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 
 	# Get rid of initial whitespace from all non-comment GRANVL values.
 	s/^(\d+:[^\s:][^:]*:)[ \t]+/$1/gm;
+# xxx problem with line #K:value, which becomes, eg, 4##:K:value
 
 	# Split into array of element pairs.  Toss first "false" split.
 	# xxx buggy limited patterns, how not to match newline
@@ -374,10 +432,12 @@ sub anvl_recarray { my( $record, $r_elems, $linenum, $o )=@_;
 
 		split /\n*^(\d+[:#])([^\s:][^:]*):/m
 
+# xxx problem with line #K:value, which becomes, eg, 4##:K:value
 	);
 
 	defined($$r_elems[2]) or
-		return "error: split failed on '$record', record $linenum";
+		return "error: split failed ($_) on '$record', " .
+			"record at line $linenum";
 
 	# If there was a value with no label at the start of the record,
 	# we deem that interesting enough to keep even though it's not
@@ -744,7 +804,7 @@ sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 
 	my $s = '';			# output strings are returned to $s
 	my $st = $p ? 1 : '';		# returns (stati or strings) accumulate
-	my ($msg, $anvlrec, $lineno, $name, $value, $pat, $n, $nmax);
+	my ($msg, $allmsgs, $anvlrec, $lineno, $name, $value, $pat, $n, $nmax);
 	my (%rechash, $ne, $nemax, $elem_name);	# for alt. element ordering
 	my $r_elem_order = $$o{elem_order};
 
@@ -775,6 +835,12 @@ sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 		$startline += $wslines;
 		last		unless $anvlrec;
 
+# XXX bail here if no substance (no non-comment records)?
+#     ? or should we permit a final (has to be final because our record
+#     reader keeps reading until it spots substance or eof) record that
+#     has nothing but comments
+#     and is otherwise empty (in which case anvl_recarray needs to
+#     tolerate such a substance-free record)??
 		$recnum++;		# increment record counter
 =for later
 # XXX anvl_recarray is expensive, do we _need_ to do it if the output is
@@ -793,6 +859,10 @@ sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 =cut
 		$msg = anvl_recarray($anvlrec, $r_elems, $startline, $o);
 		$msg =~ /^error/	and return "anvl_recarray: $msg";
+		$msg eq "" or
+			#print $msg, "\n";
+			#$o->{verbose} && print $msg, "\n";
+			$allmsgs .= $msg . "\n";	# save other message
 
 		# NB: apply 'find' here before possible expansion, which
 		# means that a pattern like "who:\s*smith" won't work on
@@ -917,6 +987,8 @@ sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 	continue {
 		$startline += $rrlines;
 	}
+	# XXX currently doing nothing with $allmsgs warnings!
+	#     should probably print if verbose mode on
 	$s = $om->cstream();
 	$p and ($st &&= $s), 1 or ($st .= $s);
 

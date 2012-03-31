@@ -6,7 +6,7 @@ use warnings;
 
 my $script = "anvl";		# script we're testing
 
-# as of 2010.05.02  (perlpath minus _exe, plus filval(), no -x for MSWin)
+# as of 2011.06.29  flvl() from File::Value
 #### start boilerplate for script name and temporary directory support
 
 use Config;
@@ -39,17 +39,7 @@ sub remove_td {		# remove $td but make sure $td isn't set to "."
 	$@			and die "$td: couldn't remove: $@";
 }
 
-# Abbreviated version of "raw" File::Value::file_value()
-sub filval { my( $file, $value )=@_;	# $file must begin with >, <, or >>
-	if ($file =~ /^\s*>>?/) {
-		open(OUT, $file)	or return "$file: $!";
-		my $r = print OUT $value;
-		close(OUT);		return ($r ? '' : "write failed: $!");
-	} # If we get here, we're doing file-to-value case.
-	open(IN, $file)		or return "$file: $!";
-	local $/;		$_[1] = <IN>;	# slurp mode (entire file)
-	close(IN);		return '';
-}
+use File::Value ':all';
 
 #### end boilerplate
 
@@ -133,7 +123,7 @@ i:j
 
 ';
 
-my $x = filval(">$td/file", $recstream);
+my $x = flvl(">$td/file", $recstream);
 open "IN", "<$td/file"		or die "couldn't open $td/file";
 
 my ($linenum, $rec, $wslines, $rrlines, @newlines);
@@ -229,7 +219,7 @@ b: McCartney, Paul, Sir,,
 c: Health and Human Services, United States Government
 	Department of, The,,
 ';
-my $x = filval(">$td/file", $recstream);
+my $x = flvl(">$td/file", $recstream);
 
 $x = `$cmd --invert $td/file`;
 is $x, "a: Hu Jintao\nb: Sir Paul McCartney\nc: The United States Government Department of Health and Human Services\n\n",
@@ -265,7 +255,7 @@ c: of
 e: the
 g: party
 ';
-my $x = filval(">$td/file", $recstream);
+my $x = flvl(">$td/file", $recstream);
 
 $x = `$cmd --find "the" $td/file`;
 like $x, qr/e: the.*\n\n.*g: the.*\n\n.*e: the/s,
@@ -308,7 +298,7 @@ H: 555-3333
 W: 555-4444
 ';
 
-my $x = filval(">$td/file", $recstream);
+my $x = flvl(">$td/file", $recstream);
 
 $x = `$cmd -m "anvl" $td/file`;
 like $x, qr/_: Smith, Jo.*_: Wong, Chris/s,
@@ -354,7 +344,7 @@ H: 555-3333
 W: 555-4444
 ';
 
-my $x = filval(">$td/file", $recstream);
+my $x = flvl(">$td/file", $recstream);
 
 #$x = `$cmd -m "anvl" $td/file`;
 #like $x, qr/_: Smith, Jo.*_: Wong, Chris/s,
@@ -400,7 +390,7 @@ Email: hkhan@example.com
 Group: squash
 ';
 
-$x = filval(">$td/file", $recstream);
+$x = flvl(">$td/file", $recstream);
 
 $x = `$cmd -m "csv:Name|Mobile Phone|Work Phone|Email|Group" $td/file`;
 like $x, qr/"Fr\|an ""Doc"" Smith",.*555-8888".*2222.*cwong.*"squash"\n$/s,

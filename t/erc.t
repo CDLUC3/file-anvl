@@ -6,7 +6,7 @@ use warnings;
 
 my $script = "erc";		# script we're testing
 
-# as of 2010.05.02  (perlpath minus _exe, plus filval(), no -x for MSWin)
+# as of 2011.06.29  flvl() from File::Value
 #### start boilerplate for script name and temporary directory support
 
 use Config;
@@ -39,17 +39,7 @@ sub remove_td {		# remove $td but make sure $td isn't set to "."
 	$@			and die "$td: couldn't remove: $@";
 }
 
-# Abbreviated version of "raw" File::Value::file_value()
-sub filval { my( $file, $value )=@_;	# $file must begin with >, <, or >>
-	if ($file =~ /^\s*>>?/) {
-		open(OUT, $file)	or return "$file: $!";
-		my $r = print OUT $value;
-		close(OUT);		return ($r ? '' : "write failed: $!");
-	} # If we get here, we're doing file-to-value case.
-	open(IN, $file)		or return "$file: $!";
-	local $/;		$_[1] = <IN>;	# slurp mode (entire file)
-	close(IN);		return '';
-}
+use File::Value ':all';
 
 #### end boilerplate
 
