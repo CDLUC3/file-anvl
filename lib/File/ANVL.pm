@@ -18,7 +18,7 @@ use constant ANVLR	=> 2;
 use constant ANVLS	=> 3;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-1-03 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-1-05 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -30,7 +30,8 @@ our @EXPORT_OK = qw(
 	anvl_name_naturalize
 	anvl_rechash anvl_valsplit
 	erc_anvl_expand_array kernel_labels
-	getlines trimlines
+	xgetlines trimlines
+	make_get_anvl
 	anvl_opt_defaults anvl_decode anvl_om
 
 	anvl_encode anvl_recsplit
@@ -73,11 +74,11 @@ sub anvl_opt_defaults { return {
 
 # xxx     decide on good name for short form and long form ERC
 
-# Returns a closure that calls an input handler with a $filehandle arg
-# that's set to *ARGV by default.  If $reader is defined, it names an
-# alternate reader that's called for each next unit of input.
+# Returns a closure that calls an input reader with that's set to *ARGV
+# by default.  If $reader and $readee are defined, they are stored in the
+# closure and all reads will be performed by calling &$reader($readee).
 #
-# The closure for reading lines from a file collects and returns all the
+# The default reader collects text lines from a file and returns all the
 # lines associated with the next "record", which is considered to start
 # wherever the read pointer happens to be and continues to the first two
 # blank lines encountered that occur after "substance" is detected.
@@ -86,20 +87,29 @@ sub anvl_opt_defaults { return {
 # a record with substance are returned, but any such lines that follow
 # that the final record are discarded.
 #
-sub make_get_anvl { my( $filehandle, $reader )=@_;
-
-	# If $filehandle specified, use the Perl <$filehandle> idiom to
-	# return next unit of input (normally a line, but here a para).
-	#
-	$filehandle ||= *ARGV;
+sub make_get_anvl { my( $reader, $readee ) = shift;
 
 	unless ($reader) {
+
 		my $rec;		# returned record
 		my $s;			# next increment of input
 		my $substance;		# boolean detecting substance
 
-	    return sub {
+	    return sub { my( $filehandle ) = shift;
 
+		# Returns a subroutine, call it get_anvl()
+		#
+		#   Usage:  $record = get_anvl( [$filehandle] );
+		#
+		# It reads ANVL input records as text lines from the
+		# file given by $filehandle (*ARGV by default, which can
+		# process multiple files via while loop magic).  Usually,
+		# the closure holds enough state information, set up by
+		# make_get_anvl(), that get_anvl() can be called without
+		# arguments.  get_anvl() returns the record read as a
+		# string, or returns undef on end of input or error.
+		#
+		$filehandle ||= *ARGV;
 		local $/ = NL.NL;	# a kind of "paragraph" input mode
 					# $/ === $INPUT_RECORD_SEPARATOR
 		$rec = '';
@@ -121,28 +131,37 @@ sub make_get_anvl { my( $filehandle, $reader )=@_;
 	    };
 	}
 
-	# If we get here, $from_bdb should reference an input method.
+	# If we get here, $reader should reference an input method and
+	# $readee is assumed to be any value (eg, BDB handle) that may
+	# permit &reader to get the next record.  Any other arguments
+	# passed to the get_anvl() function below will be passed along
+	# too, ie, $reader($readee, @_).
 	#
 	ref($reader) eq "CODE"		or return undef;
 
-	my $rec;		# returned record
-	my $s;			# next increment of input
+	my $rec;			# returned record
+	my $s;				# next increment of input
+	my $substance;			# boolean detecting substance
+
 	return sub {
 		$rec = '';
 		1 while (
-			defined($s = &reader($filehandle, @_)) and  # read and
+			# XXX should this accumulate in general??? or
+			#     should we leave it to the definer of $reader?
+			defined($s = &reader($readee, @_)) and	# read and
 				($rec .= $s),	# save everything, but stop
-				#$s !~ /\S/	# when we see substance
-				! ($s =~ /^[^#\s]/m || $s =~ /^[^#].*\S/m)
+				$substance =	# when we detect substance, ie,
+					$s =~ /^[^#\s]/m || $s =~ /^[^#].*\S/m,
+				! $substance	# non-comment with non-space
 		);
-		defined($s) or
-			return $rec || undef;	# almost eof or real eof
-		return $rec;
+		return $substance ?
+			$rec :	# return either collected record or undef
+			undef;	# any final blank or comment lines are tossed
 	};
 }
 
 # XXX deprecated!  see sub make_get_anvl
-sub getlines { my( $filehandle )=@_;
+sub xgetlines { my( $filehandle )=@_;
 
 	my $rec = '';			# returned record
 	my $s;				# next increment of input
@@ -643,9 +662,9 @@ sub anvl_decode {
 	local $_ = shift(@_) || '';
 
 	pos() = 0;			# reset \G for $_ just to be safe
-	while (/(?=\%{)/g) {		# lookahead; \G matches just before
+	while (/(?=\%\{)/g) {		# lookahead; \G matches just before
 		my $p = pos();		# note \G position before it changes
-		s/\G \%{ (.*?) \%}//xs	# 's' modifier makes . match \n
+		s/\G \%\{ (.*?) \%\}//xs	# 's' modifier makes . match \n
 			or last;	# if no closing brace, skip match
 		my $exp_block = $1;	# save removed expansion block
 		$exp_block =~ s/\s+//g;	# strip it of all whitespace
@@ -794,13 +813,16 @@ sub erc_anvl_expand_array { my( $r_elems )=@_;
 
 # xxx anvl_fmt not consistent with om_anvl!
 
+# Input file(s) from ARGV.
+
 sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 
 	return "anvl_om: 1st arg not an OM object"
 		if ref($om) !~ /^File::OM::/;
 	my $p = $om->{outhandle};	# whether 'print' status or small
 	$o ||= anvl_opt_defaults();
-	$get_anvl ||= File::ANVL::make_get_anvl();	# default is getlines()
+	$get_anvl ||= File::ANVL::make_get_anvl();	# xxx set input here?
+# XXX test return value!
 
 	my $s = '';			# output strings are returned to $s
 	my $st = $p ? 1 : '';		# returns (stati or strings) accumulate
@@ -826,21 +848,14 @@ sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 
 	while (1) {
 
-		# Get paragraph (ANVL record) and count lines therein.
+		# Get an ANVL record and count lines therein.  ANVL
+		# records can come from anywhere, but typically from
+		# a file (read in "paragraph" mode) or a BDB database.
 		#
-# XXX replace getlines() with a method reference that pulls ANVL
-#     directly from whereever, esp. from a BDB database
-		#$anvlrec = trimlines(getlines(), \$wslines, \$rrlines);
 		$anvlrec = trimlines(&$get_anvl(), \$wslines, \$rrlines);
 		$startline += $wslines;
 		last		unless $anvlrec;
 
-# XXX bail here if no substance (no non-comment records)?
-#     ? or should we permit a final (has to be final because our record
-#     reader keeps reading until it spots substance or eof) record that
-#     has nothing but comments
-#     and is otherwise empty (in which case anvl_recarray needs to
-#     tolerate such a substance-free record)??
 		$recnum++;		# increment record counter
 =for later
 # XXX anvl_recarray is expensive, do we _need_ to do it if the output is
@@ -1043,7 +1058,7 @@ File::ANVL - A Name Value Language routines
 
  use File::ANVL;       # to import routines into a Perl script
 
- getlines(             # read from $filehandle (defaults to *ARGV) up to
+ xgetlines(             # read from $filehandle (defaults to *ARGV) up to
          $filehandle   # blank line; returns record read or undef on EOF;
          );            # record may be all whitespace (almost EOF)
 

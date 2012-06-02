@@ -20,6 +20,7 @@ WriteMakefile(
     PL_FILES            => {},
     PREREQ_PM => {
 	'Text::Wrap'	=> 0,
+	'File::Value'	=> '1.01',
     },
     dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean               => { FILES => 'File-ANVL-*' },

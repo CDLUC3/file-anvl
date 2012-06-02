@@ -99,7 +99,7 @@ is $om->value_encode("a	b\nc"), 'a\u0009b\u000ac',
 
 }
 
-{	# getlines and trimlines
+{	# get_anvl and trimlines
 
 remake_td();
  
@@ -127,37 +127,38 @@ my $x = flvl(">$td/file", $recstream);
 open "IN", "<$td/file"		or die "couldn't open $td/file";
 
 my ($linenum, $rec, $wslines, $rrlines, @newlines);
+my $get_anvl = make_get_anvl();
 
 $linenum = 1;
-$rec = getlines(*IN);
+$rec = &$get_anvl(*IN);
 $rec = trimlines($rec, \$wslines, \$rrlines);
 $linenum += $wslines;
-like $linenum.$rec, qr/4a:b\nc:d\n\n/, 'first getlines record on line 4';
+like $linenum.$rec, qr/4a:b\nc:d\n\n/, 'first get_anvl record on line 4';
 
 $linenum += $rrlines;
-$rec = getlines(*IN);
+$rec = &$get_anvl(*IN);
 $rec = trimlines($rec, \$wslines, \$rrlines);
 $linenum += $wslines;
-like $linenum.$rec, qr/9e:f\ng:h\n\n/, 'second getlines record on line 9';
+like $linenum.$rec, qr/9e:f\ng:h\n\n/, 'second get_anvl record on line 9';
 
 #$linenum += scalar(@newlines = $rec =~ /\n/g);
 $linenum += $rrlines;
-$rec = getlines(*IN);
+$rec = &$get_anvl(*IN);
 $rec = trimlines($rec, \$wslines, \$rrlines);
 $linenum += $wslines;
 #$rec =~ s/^(\s+)//s	and $linenum += scalar(@newlines = $1 =~ /\n/g);
-like $linenum.$rec, qr/13i:j\n\n/, 'third getlines record on line 13';
+like $linenum.$rec, qr/13i:j\n\n/, 'third get_anvl record on line 13';
 
 #$linenum += scalar(@newlines = $rec =~ /\n/g);
 $linenum += $rrlines;
-$rec = getlines(*IN);
+$rec = &$get_anvl(*IN);
 $rec = trimlines($rec, \$wslines, \$rrlines);
-is $rec, undef, 'fourth getlines call hits almost eof (blank record)';
+is $rec, undef, 'fourth get_anvl call hits almost eof (blank record)';
 $linenum += $wslines;	# where next rec would start if there was one
 
-is $linenum-1, 17, 'getlines has returned total of 17 lines';
+is $linenum-1, 14, 'get_anvl chops blank lines at end of input';
 
-is $rec, undef, 'fifth getlines call hits real eof';
+is $rec, undef, 'fifth get_anvl call hits real eof';
 
 close(*IN);
 
@@ -178,12 +179,12 @@ is $wslines, 3, 'trimlines returns undef but still counted blank lines';
 is $rrlines, 0, 'trimlines returns undef but still defined record linecount';
 
 $x = `$cmd --verbose --comments < $td/file`;
-like $x, qr/record 3, line 13/, 'stdin test for getlines (with anvl)';
+like $x, qr/record 3, line 13/, 'stdin test for get_anvl (with anvl)';
 
 $x = `$cmd --verbose --comments $td/file $td/file $td/file`;
 like $x, qr{
 line\ 4 .* line\ 21 .* line\ 26 .* line\ 30 .* line\ 38 .*
-}sx, '3-file test for getlines (with anvl)';
+}sx, '3-file test for get_anvl (with anvl)';
 
 remove_td();
 }

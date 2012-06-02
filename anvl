@@ -152,7 +152,7 @@ before other processing is done.
 Comments may be passed through to any output format; pseudo-comments are
 produced if the target format doesn't natively support comments.
 
-   $ echo '# A source of kernel knowledge.
+   $ echo '# A way to kernel knowledge.
    > erc: Kunze, John A. | A Metadata Kernel for Electronic Permanence
    >      | 20011106 | http://journals.tdl.org/jodi/article/view/43
    > ' > myfile
