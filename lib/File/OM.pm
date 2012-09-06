@@ -9,7 +9,7 @@ use strict;
 use warnings;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-1-05 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-1-06 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -47,6 +47,7 @@ sub om_opt_defaults { return {
 	indent_step	=>	# how much to increment/decrement indent
 		'  ',		# for XML, JSON
 	outhandle	=> '',	# return string by default
+
 	turtle_indent	=>	# turtle has one indent width
 		'    ',
 	turtle_predns	=>	# turtle predicate namespaces
@@ -73,6 +74,14 @@ sub om_opt_defaults { return {
 	recnum		=> 0,	# current record number
 	record_is_open	=> 0,	# whether a record is open
 	stream_is_open	=> 0,	# whether a stream is open
+
+	# Web options.
+	web_mode	=> 0,
+	http_version	=> 'HTTP/1.1',
+	http_status	=> '200 OK',
+	content_type	=> 'text/plain',
+	stream_separator => "\n",
+
 	};
 }
 
@@ -129,6 +138,21 @@ sub elems {
 		$sequence .= $self->elem($name, $value);
 	}
 	return $sequence;
+}
+
+sub web_mode { my( $om ) = ( shift );
+
+	my $s = '';
+	$om and $om->{web_mode} or
+		return $s;
+	$om->{http_version} and $om->{http_status} and
+		$s .= $om->{http_version} . ' ' .
+			$om->{http_status} . "\n";
+	$om->{content_type} and
+		$s .= 'Content-Type: ' . $om->{content_type} . "\n";
+	$s .= $om->{stream_separator} || "\n";
+
+	return $s;
 }
 
 # Shared routine to construct a header ordering based on the record
@@ -348,6 +372,8 @@ sub ostream {	# OM::ANVL
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
 	my $s = '';
+	$self->{web_mode} and
+		$s .= File::OM::web_mode($self);
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -573,6 +599,8 @@ sub ostream {	# OM::CSV
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
 	my $s = '';
+	$self->{web_mode} and
+		$s .= File::OM::web_mode($self);
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -719,12 +747,15 @@ sub crec {	# OM::JSON
 
 sub ostream {	# OM::JSON
 	my $self = shift;
+	my $s = '';
 
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
 	$self->{indent_step} ||= '  ';		# standard indent width
 	$self->{indent} = $self->{indent_step};		# current indent width
-	my $s = '[';
+	$self->{web_mode} and
+		$s .= File::OM::web_mode($self);
+	$s .= '[';
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -871,6 +902,8 @@ sub ostream {	# OM::Plain
 
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
+	$self->{web_mode} and
+		$s .= File::OM::web_mode($self);
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -1031,6 +1064,8 @@ sub ostream {	# OM::PSV
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
 	my $s = '';
+	$self->{web_mode} and
+		$s .= File::OM::web_mode($self);
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -1199,6 +1234,8 @@ sub ostream {	# OM::Turtle
 
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
+	$self->{web_mode} and
+		$s .= File::OM::web_mode($self);
 	# add the Turtle preamble
 	$s .= "\@prefix $self->{turtle_stream_prefix}: <"
 		. $self->{turtle_predns} .  "> .\n";
@@ -1370,12 +1407,15 @@ sub crec {	# OM::XML
 
 sub ostream {	# OM::XML
 	my $self = shift;
+	my $s = '';
 
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
 	$self->{indent} = $self->{indent_start};	# current indent width
 	$self->{indent} =~ s/$/$self->{indent_step}/;	# increase indent
-	my $s = "<$self->{xml_stream_name}>\n";
+	$self->{web_mode} and
+		$s .= File::OM::web_mode($self);
+	$s .= "<$self->{xml_stream_name}>\n";
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -1541,7 +1581,16 @@ the status of the print call.  Constructor options and defaults:
  indent_start     => '',        # overall starting indent
  indent_step      => '  ',      # how much to increment/decrement indent
 
- # Format specific options.
+ # Web options.                 # set before-stream preamble for web mode
+ web_mode         => 0,         # define as 1 to enable web mode
+ http_version     => 'HTTP/1.1' # HTTP version
+ http_status      => '200 OK'   # outputs: "$http_version $http_status"
+                                # eg, HTTP/1.1 401 unauthorized,
+ content_type     =>            # an HTTP header, eg, application/xml,
+        'text/plain',
+ stream_separator => "\n",      # eg, a blank line ends stream preamble
+
+ # Format-specific options.
  turtle_indent    => '    ',    # turtle has one indent width
  turtle_predns    =>            # turtle predicate namespaces
         'http://purl.org/kernel/elements/1.1/',

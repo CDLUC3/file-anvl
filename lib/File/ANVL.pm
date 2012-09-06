@@ -10,6 +10,7 @@ use strict;
 use warnings;
 
 use constant NL		=> "\n";
+use constant NLNL	=> "\n\n";
 
 # ANVL flavors
 #
@@ -18,7 +19,7 @@ use constant ANVLR	=> 2;
 use constant ANVLS	=> 3;
 
 our $VERSION;
-$VERSION = sprintf "%d.%02d", q$Name: Release-1-05 $ =~ /Release-(\d+)-(\d+)/;
+$VERSION = sprintf "%d.%02d", q$Name: Release-1-06 $ =~ /Release-(\d+)-(\d+)/;
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -74,9 +75,33 @@ sub anvl_opt_defaults { return {
 
 # xxx     decide on good name for short form and long form ERC
 
-# Returns a closure that calls an input reader with that's set to *ARGV
-# by default.  If $reader and $readee are defined, they are stored in the
-# closure and all reads will be performed by calling &$reader($readee).
+# "get anvl record"?  "get record in anvl format"
+# "get record from Btree and return as name:value pairs"
+# "if it's in anvl and we output to anvl, why call anvl_recarray?"
+
+# Returns a closure that defines an input reader to return the next
+# "record".  Initially it's set to *ARGV by default.  If $reader and
+# $readee are defined, they are stored in the closure and all reads
+# will be performed by calling &$reader($readee).  For btree case,
+# ongoing state should record the new key (as current key) that marked
+# the end of the previous record and will be constant in the next record.
+#
+# xxx remind me what purpose this closure serves?  is it just so that you
+#     can call a "get record" without args from the om_anvl loop? yes..?
+#
+#xxx Changing: an ANVL record used to be a set of lines ending in a blank
+#xxx line, but that's too restrictive.  Moving to a concept of ANVL record
+#xxx headed by a line beginning with two colons, eg, :: 13030 or :: defs .
+#xxx Also want an ANVL record to be a set of keys from a BTree that all
+#xxx start with the same identifier.
+#xxx For a Btree, line numbers correspond to key/value pair numbers.
+#
+#xxx big speed improvements could occur if the record ($find) and element
+#xxx selection ($show) could be pushed low down into both the *ARGV and
+#xxx Btree reader closure variables -- many fewer anvl lines and arrays
+#xxx to construct
+#xxx more speedup if $elemsproc (eg, convert short to long ERC) occurred
+#xxx low down early too
 #
 # The default reader collects text lines from a file and returns all the
 # lines associated with the next "record", which is considered to start
@@ -91,9 +116,10 @@ sub make_get_anvl { my( $reader, $readee ) = shift;
 
 	unless ($reader) {
 
+		# closure variables
 		my $rec;		# returned record
 		my $s;			# next increment of input
-		my $substance;		# boolean detecting substance
+		my $substance;		# boolean to detect substance
 
 	    return sub { my( $filehandle ) = shift;
 
@@ -110,7 +136,7 @@ sub make_get_anvl { my( $reader, $readee ) = shift;
 		# string, or returns undef on end of input or error.
 		#
 		$filehandle ||= *ARGV;
-		local $/ = NL.NL;	# a kind of "paragraph" input mode
+		local $/ = NLNL;	# a kind of "paragraph" input mode
 					# $/ === $INPUT_RECORD_SEPARATOR
 		$rec = '';
 		1 while (
@@ -120,6 +146,9 @@ sub make_get_anvl { my( $reader, $readee ) = shift;
 					$s =~ /^[^#\s]/m || $s =~ /^[^#].*\S/m,
 				! $substance	# non-comment with non-space
 		);
+		# XXX could do a $find test here or in trimlines?
+		# XXX could do a $show test here or in trimlines?
+		# XXX could do short to long erc conversion here?
 		return $substance ?
 			$rec :	# return either collected record or undef
 			undef;	# any final blank or comment lines are tossed
@@ -139,6 +168,7 @@ sub make_get_anvl { my( $reader, $readee ) = shift;
 	#
 	ref($reader) eq "CODE"		or return undef;
 
+	# closure variables
 	my $rec;			# returned record
 	my $s;				# next increment of input
 	my $substance;			# boolean detecting substance
@@ -158,6 +188,27 @@ sub make_get_anvl { my( $reader, $readee ) = shift;
 			$rec :	# return either collected record or undef
 			undef;	# any final blank or comment lines are tossed
 	};
+}
+
+# Reads an anvl "record" from a bdb btree, where a record is defined
+# as all key/value pairs that share the same initial substring of the
+# key up to a '|' character; big use case is a 'binder' database record
+# which is all elements bound under one id, for which keys are of the
+# form "identifier|elementname".
+#     This executes in a closure that has
+# "private global" vars $rec, $s, and $substance at its disposal.
+#
+sub bdb2anvl_reader { my( $db ) = ( shift );
+
+	my $rec = '';
+	my ($status, @kvpairs);
+
+	#for ($status = $db->seq($key, $value, R_FIRST);
+	#	$status == 0;
+	#	$status = $db->seq($key, $value, R_NEXT))
+	#{
+ 
+	return join("\n", @kvpairs);
 }
 
 # XXX deprecated!  see sub make_get_anvl
@@ -234,11 +285,17 @@ sub trimlines { my( $rec, $r_wslines, $r_rrlines )=@_;
 	my $blanksection = $1;
 	my @newlines;
 
-	ref($r_wslines) eq 'SCALAR' and		# if given, define it
+	# Since this will be called from inner loops, use a fast but
+	# "safe enough" non-null test of the return args before assigning.
+	# XXXX dumb that I have to waste @newlines just to get a count
+	#      xxx fix this
+	#
+	defined($r_wslines) and			# if given, define it
 		$$r_wslines = scalar(@newlines = $blanksection =~ /\n/g);
 
-	ref($r_rrlines) eq 'SCALAR' and		# if given, define it
+	defined($r_wslines) and			# if given, define it
 		$$r_rrlines = scalar(@newlines = $rec =~ /\n/g);
+# xxx see perldoc -q array for lots of tricks, eg, List::Util
 
 	#$$r_rrlines = scalar($rec =~ /$/gm);	# xxx why doesn't this work?
 
@@ -815,6 +872,8 @@ sub erc_anvl_expand_array { my( $r_elems )=@_;
 
 # Input file(s) from ARGV.
 
+# call with anvl_om ($om, $o, File::ANVL::make_get_anvl());
+
 sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 
 	return "anvl_om: 1st arg not an OM object"
@@ -829,6 +888,7 @@ sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 	my ($msg, $allmsgs, $anvlrec, $lineno, $name, $value, $pat, $n, $nmax);
 	my (%rechash, $ne, $nemax, $elem_name);	# for alt. element ordering
 	my $r_elem_order = $$o{elem_order};
+	my ($find, $show) = ($$o{find}, $$o{show});
 
 	$s = $om->ostream();		# open stream
 
@@ -863,7 +923,8 @@ sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 		if (ref($om) eq 'File::OM::ANVL' and ! $r_elem_order) {
 			# xxx do quick expand (short->long erc) here?
 			#     xxx _will_ disturb input line numbering
-			$$o{find} and ($anvlrec !~ /$$o{find}/m) and
+			#$$o{find} and ($anvlrec !~ /$$o{find}/m) and
+			$find and ($anvlrec !~ /$find/om) and
 				next;		# no output has occurred
 			# xxx do quick check for 'show' and next
 			# XXXXXXXX must define lineno for verbose case
@@ -871,6 +932,11 @@ sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 			$p and ($st &&= $s), 1 or ($st .= $s);
 			next;
 		}
+# xxx we _would_ want anvl-to-anvl conversion when (a) pretty printing
+#     (eg, badly indented stuff), (b) re-ordering elements (originally
+#     developed for CSV), (c) filtering a subset of elements, or (d)
+#     naturalizing names.  All cases call for anvl_recarray...
+
 =cut
 		$msg = anvl_recarray($anvlrec, $r_elems, $startline, $o);
 		$msg =~ /^error/	and return "anvl_recarray: $msg";
@@ -883,7 +949,8 @@ sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 		# means that a pattern like "who:\s*smith" won't work on
 		# on a short form ANVL record.
 		#
-		$$o{find} and ($anvlrec !~ /$$o{find}/m) and
+		#$$o{find} and ($anvlrec !~ /$$o{find}/m) and
+		$find and ($anvlrec !~ /$find/om) and
 			next;		# no output has occurred
 
 		# If caller has set $$o{elemsproc} to a code reference,
@@ -912,11 +979,14 @@ sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 		# outputting json separators (eg, no comma if $recnum eq 1)
 		# or record numbers in comments (eg, if $$o{verbose}).
 		# $startline is useful for parser diagnostics (eg, "error
-		# on line 5").  $r_elems and $r_elem_order are needed for
+		# on line 5").
+		#
+		# Note: $r_elems and $r_elem_order are needed for
 		# discovering what elements will populate CSV/PSV records.
 		#
 # XXX this next isn't needed if output is anvl ?!  (assuming final NL is
-# written when closing the record
+#     written when closing the record; how would it be interesting to
+#     specify ANVL element ordering (what/when/who not who/what/when ?) 
 		$s = $om->orec($recnum, $startline, $r_elems, $r_elem_order);
 		$p and ($st &&= $s), 1 or ($st .= $s);
 
@@ -980,7 +1050,9 @@ sub anvl_om { my( $om, $o, $get_anvl )		= (shift, shift, shift);
 			$elemnum++		unless $name eq '#';
 
 			# Skip if 'show' given and not requested.
-			$$o{show} and ("$name: $value" !~ /$$o{show}/m) and
+			# inner loop: worth it to store $$o{show}
+			#$$o{show} and ("$name: $value" !~ /$$o{show}/m) and
+			$show and ("$name: $value" !~ /$show/om) and
 				(undef $name),	# cause elem to be skipped
 				next;
 
