@@ -308,36 +308,5 @@ $x = $om->crec();
 $x = $om->orec();
 is $om->{recnum}, '2', 'crec/orec tracks recnum 2';
 
-# web_mode tests
-
-$om = File::OM->new("ANVL", { web_mode => 1 } );
-is $om->elem('ab', 'cd'),
-	"HTTP/1.1 200 OK\nContent-Type: text/plain\n\nab: cd\n",
-	'ANVL web mode';
-
-$om = File::OM->new("JSON",
-	{ web_mode => 1, content_type => 'application/json' } );
-$om->{http_status} = '401 unauthorized';
-like $om->elem('ab', 'cd'),
-	qr|HTTP/1.1 401 unauth.*\nContent-Type: ap.*/json\n\n\[\n.*{\n.*"ab|,
-	'JSON web mode';
-
-$om = File::OM->new("Plain", { web_mode => 1 } );
-is $om->elem('ab', 'cd'),
-	"HTTP/1.1 200 OK\nContent-Type: text/plain\n\ncd\n",
-	'Plain web mode';
-
-$om = File::OM->new("Turtle", { web_mode => 1 } );
-like $om->elem('ab', 'cd'),
-	qr|HTTP/1.1 200 OK\nContent-Type: text/plain\n\n\@prefix erc:|,
-	'Turtle web mode';
-
-$om = File::OM->new("XML",
-	{ web_mode => 1, content_type => 'application/xml' } );
-$om->{http_status} = '401 unauthorized';
-like $om->elem('ab', 'cd'),
-	qr|HTTP/1.1 401 unauth.*\nContent-Type: ap.*/xml\n\n<recs|,
-	'XML web mode';
-
 remove_td();
 }

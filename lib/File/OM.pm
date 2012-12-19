@@ -1,6 +1,7 @@
 # xxx need 'raw' format, like plain but no wrap for resolve mode
 # xxx or need 'granvl' format, like anvl but no wrap for resolve mode?
 # xxx need 'null' format, to do ...?
+#
 
 package File::OM;
 
@@ -75,12 +76,7 @@ sub om_opt_defaults { return {
 	record_is_open	=> 0,	# whether a record is open
 	stream_is_open	=> 0,	# whether a stream is open
 
-	# Web options.
-	web_mode	=> 0,
-	http_version	=> 'HTTP/1.1',
-	http_status	=> '200 OK',
-	content_type	=> 'text/plain',
-	stream_separator => "\n",
+	cgih	=> undef,	# by default, don't act like an HTTP stream
 
 	};
 }
@@ -100,6 +96,11 @@ sub new {
 	}
 	bless $self, $class;
 
+	# It seems very useful to store the format name, even if it
+	# violates some notions about what objects should know.
+	#
+	$self->{format} = $format;
+
 	my $options = shift;
 	my ($key, $value);
 	$self->{$key} = $value
@@ -114,8 +115,11 @@ sub new {
 sub DESTROY {
 	my $self = shift;
 	my ($s, $z) = ('', '');		# built string and catchup string
-	$self->{stream_is_open} and	# wrap up any loose ends
-		$z = $self->cstream();	# which calls crec()
+
+	$self->{cgih} and			# do any http preamble even
+		$s .= $self->{cgih}->take();	# if there's no other output
+	$self->{stream_is_open} and		# wrap up any loose ends
+		$z = $self->cstream();		# which calls crec()
 	$self->{outhandle}	or $s .= $z;	# don't retain print status
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -138,21 +142,6 @@ sub elems {
 		$sequence .= $self->elem($name, $value);
 	}
 	return $sequence;
-}
-
-sub web_mode { my( $om ) = ( shift );
-
-	my $s = '';
-	$om and $om->{web_mode} or
-		return $s;
-	$om->{http_version} and $om->{http_status} and
-		$s .= $om->{http_version} . ' ' .
-			$om->{http_status} . "\n";
-	$om->{content_type} and
-		$s .= 'Content-Type: ' . $om->{content_type} . "\n";
-	$s .= $om->{stream_separator} || "\n";
-
-	return $s;
 }
 
 # Shared routine to construct a header ordering based on the record
@@ -349,6 +338,7 @@ sub orec {	# OM::ANVL
 
 	$self->{verbose} and
 		$s .= "# from record $self->{recnum}, line $lineno\n";
+# xxx what happens when you print the empty string? truly harmless?
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -372,8 +362,9 @@ sub ostream {	# OM::ANVL
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
 	my $s = '';
-	$self->{web_mode} and
-		$s .= File::OM::web_mode($self);
+	$self->{cgih} and			# even though the take() method
+		$s .= $self->{cgih}->take(),	# returns header block once,
+		undef $self->{cghi};		# optimize to call it only once
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -399,8 +390,7 @@ sub name_encode {	# OM::ANVL
 	#$s =~ s/^\s+//;
 	#$s =~ s/\s+$//;		# trim both ends
 	#$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
-# xxx keep doubling %?
-	$s =~ s/%/%%/g;		# to preserve literal %, double it
+	#$s =~ s/%/%%/g;		# to preserve literal %, double it
 # xxx what about granvl?
 				# yyy must be decoded by receiver
 	#$s =~ s/:/%3a/g;	# URL-encode all colons (%cn)
@@ -428,7 +418,6 @@ sub name_encode {	# OM::ANVL
 }
 
 # Encoding of names and values is done upon output in ANVL.
-# Default is to wrap long lines.
 
 sub value_encode {	# OM::ANVL
 	my ($self, $s, $anvl_mode) = (shift, shift, shift);
@@ -454,8 +443,8 @@ sub value_encode {	# OM::ANVL
 	#$s =~ s/^\s+//;
 	#$s =~ s/\s+$//;		# trim both ends
 
-	$s =~ s/%/%%/g;		# to preserve literal %, double it
-				# yyy must be decoded by receiver
+	#$s =~ s/%/%%/g;		# to preserve literal %, double it
+	#			# yyy must be decoded by receiver
 	$s =~ s{		# URL-encode newlines in portable way
 		(\n)		# \n matches all platforms' ends of lines
 	}{			#
@@ -525,7 +514,7 @@ sub elem {	# OM::CSV
 	elsif (defined $name) {			# no element if no name
 		# xxx this should be stacked
 		$self->{element_name} = $self->name_encode($name);
-		my $enc_val = 
+		#my $enc_val = 
 		$s .= &$wrapper('', '',
 			$self->value_encode($value));	# encoded value
 		# M_ELEMENT and C_ELEMENT would start here
@@ -599,8 +588,9 @@ sub ostream {	# OM::CSV
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
 	my $s = '';
-	$self->{web_mode} and
-		$s .= File::OM::web_mode($self);
+	$self->{cgih} and			# even though the take() method
+		$s .= $self->{cgih}->take(),	# returns header block once,
+		undef $self->{cghi};		# optimize to call it only once
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -753,8 +743,9 @@ sub ostream {	# OM::JSON
 	$self->{stream_is_open} = 1;
 	$self->{indent_step} ||= '  ';		# standard indent width
 	$self->{indent} = $self->{indent_step};		# current indent width
-	$self->{web_mode} and
-		$s .= File::OM::web_mode($self);
+	$self->{cgih} and			# even though the take() method
+		$s .= $self->{cgih}->take(),	# returns header block once,
+		undef $self->{cghi};		# optimize to call it only once
 	$s .= '[';
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -902,8 +893,9 @@ sub ostream {	# OM::Plain
 
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
-	$self->{web_mode} and
-		$s .= File::OM::web_mode($self);
+	$self->{cgih} and			# even though the take() method
+		$s .= $self->{cgih}->take(),	# returns header block once,
+		undef $self->{cghi};		# optimize to call it only once
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -990,7 +982,7 @@ sub elem {	# OM::PSV
 	elsif (defined $name) {			# no element if no name
 		# xxx this should be stacked
 		$self->{element_name} = $self->name_encode($name);
-		my $enc_val = 
+		#my $enc_val = 
 		$s .= &$wrapper('', '',
 			$self->value_encode($value));	# encoded value
 		# M_ELEMENT and C_ELEMENT would start here
@@ -1064,8 +1056,9 @@ sub ostream {	# OM::PSV
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
 	my $s = '';
-	$self->{web_mode} and
-		$s .= File::OM::web_mode($self);
+	$self->{cgih} and			# even though the take() method
+		$s .= $self->{cgih}->take(),	# returns header block once,
+		undef $self->{cghi};		# optimize to call it only once
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
 	or
@@ -1095,8 +1088,8 @@ sub name_encode {	# OM::PSV
 	#$s =~ s/^\s+//;
 	#$s =~ s/\s+$//;		# trim both ends
 	#$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
-	$s =~ s/%/%%/g;		# to preserve literal %, double it
-				# yyy must be decoded by receiver
+	#$s =~ s/%/%%/g;		# to preserve literal %, double it
+	#			# yyy must be decoded by receiver
 	$s =~ s/\|/%7c/g;	# URL-encode all colons
 	$s =~ s/\n/%0a/g;	# URL-encode all newlines
 
@@ -1112,8 +1105,8 @@ sub value_encode {	# OM::PSV
 	#$s =~ s/^\s+//;
 	#$s =~ s/\s+$//;		# trim both ends
 	#$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
-	$s =~ s/%/%%/g;		# to preserve literal %, double it
-				# yyy must be decoded by receiver
+	#$s =~ s/%/%%/g;		# to preserve literal %, double it
+	#			# yyy must be decoded by receiver
 	$s =~ s/\|/%7c/g;	# URL-encode all colons
 	$s =~ s/\n/%0a/g;	# URL-encode all newlines
 
@@ -1234,8 +1227,9 @@ sub ostream {	# OM::Turtle
 
 	$self->{recnum} = 0;
 	$self->{stream_is_open} = 1;
-	$self->{web_mode} and
-		$s .= File::OM::web_mode($self);
+	$self->{cgih} and			# even though the take() method
+		$s .= $self->{cgih}->take(),	# returns header block once,
+		undef $self->{cghi};		# optimize to call it only once
 	# add the Turtle preamble
 	$s .= "\@prefix $self->{turtle_stream_prefix}: <"
 		. $self->{turtle_predns} .  "> .\n";
@@ -1413,8 +1407,9 @@ sub ostream {	# OM::XML
 	$self->{stream_is_open} = 1;
 	$self->{indent} = $self->{indent_start};	# current indent width
 	$self->{indent} =~ s/$/$self->{indent_step}/;	# increase indent
-	$self->{web_mode} and
-		$s .= File::OM::web_mode($self);
+	$self->{cgih} and			# even though the take() method
+		$s .= $self->{cgih}->take(),	# returns header block once,
+		undef $self->{cghi};		# optimize to call it only once
 	$s .= "<$self->{xml_stream_name}>\n";
 	$self->{outhandle} and
 		return (print { $self->{outhandle} } $s)
@@ -1528,10 +1523,10 @@ corresponds to three Perl array elements as follows:
      3n + 1  n-th ANVL element name
      3n + 2  n-th ANVL element value
 
-This means, for example, that the first two ANVL element names would be
-found at Perl array indices 4 and 7.  The first triple is special; array
-elements 0 and 2 are undefined unless the record begins with an unlabeled
-value, such as (in a quasi-ANVL record),
+This means that the first three ANVL element names would be found at Perl
+array indices 4, 7, and 10, their values at indices 5, 8, and 11.  The
+first triple is special; array elements 0 and 2 are undefined unless the
+record begins with an unlabeled value, such as (in a quasi-ANVL record),
 
      Smith, Jo
      home: 555-1234
@@ -1554,16 +1549,17 @@ without regard to line number, give $lineno as "#".
 B<OM> presents an object oriented interface.  The object constructor
 takes a format argument and returns C<undef> if the format is unknown.
 The returned object has methods for creating format-appropriate output
-corresponding (currently) to seven output modes; for a complete
-application of these methods, see L<File::ANVL::anvl_om>.  Nonetheless,
-an application can easily call no method but C<elem()>, as the
-necessary open (C<orec()> and C<ostream>) and close (C<crec()> and
-C<cstream()>) methods will be invoked automatically before the first
-element is output and before the object is destroyed, respectively.
-Passing an undefined first argument ($name) to C<elem()> is useful for
-skipping an element in a position-based format such as CSV or PSV, which
-indicate a missing element by outputing a separator character; when the
-format is not position-based, the method usually outputs nothing.
+corresponding (currently) to seven modes of output; for a complete
+application of these methods, see L<File::ANVL::anvl_om>.
+
+Nonetheless, a typical application does not have to call any method
+but C<elem()>, as the necessary open (C<orec()> and C<ostream>) and close
+(C<crec()> and C<cstream()>) methods will be invoked automatically before
+the first element is output and before the object is destroyed,
+respectively.  Passing an undefined first argument ($name) to C<elem()>
+is useful for outputting just a separator character for a "missing"
+element in a position-based format such as CSV or PSV; when the format is
+not position-based, this would usually output nothing.
 
 Constructor options include 'verbose', which causes the methods to insert
 record and line numbers as comments or pseudo-comments (e.g., for JSON,
@@ -1580,15 +1576,7 @@ the status of the print call.  Constructor options and defaults:
  outhandle        => '',        # return string instead of printing it
  indent_start     => '',        # overall starting indent
  indent_step      => '  ',      # how much to increment/decrement indent
-
- # Web options.                 # set before-stream preamble for web mode
- web_mode         => 0,         # define as 1 to enable web mode
- http_version     => 'HTTP/1.1' # HTTP version
- http_status      => '200 OK'   # outputs: "$http_version $http_status"
-                                # eg, HTTP/1.1 401 unauthorized,
- content_type     =>            # an HTTP header, eg, application/xml,
-        'text/plain',
- stream_separator => "\n",      # eg, a blank line ends stream preamble
+ cgih    => undef,              # by default, don't assume a CGI stream
 
  # Format-specific options.
  turtle_indent    => '    ',    # turtle has one indent width
@@ -1608,6 +1596,20 @@ the status of the print call.  Constructor options and defaults:
  indent           => '',        # current ident
  recnum           => 0,         # current record number
  }
+
+It is common for a stream to be returned to a web client, in which case it
+can be useful to precede it with a preamble of HTTP headers.  One way to
+achieve this is with a one-time header generator that makes any script
+output visible to a web browser.
+
+ use CGI::Head;
+ $om = File::OM->new( 'ANVL', {
+       outhandle => *STDOUT,
+       cghi => CGI::Head->new ( {
+             'Status' => '200 OK',
+             'Content-Type' => 'text/plain',
+             } ),
+       );
 
 In this release of the B<OM> package, objects carry limited state
 information.  Maintained are the current indention level, element number,
@@ -1631,7 +1633,7 @@ A Name Value Language (ANVL)
 
 =head1 HISTORY
 
-This is a beta version of OM package.  It is written in Perl.
+This is a beta version of the OM package.  It is written in Perl.
 
 =head1 AUTHOR
 

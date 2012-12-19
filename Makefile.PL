@@ -16,6 +16,7 @@ WriteMakefile(
 	'lib/File/ANVL.pm'	=> 'blib/lib/File/ANVL.pm',
 	'lib/File/ERC.pm'	=> 'blib/lib/File/ERC.pm',
 	'lib/File/OM.pm'	=> 'blib/lib/File/OM.pm',
+	'lib/CGI/Head.pm'	=> 'blib/lib/CGI/Head.pm',
     },
     PL_FILES            => {},
     PREREQ_PM => {

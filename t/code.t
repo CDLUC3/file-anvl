@@ -75,7 +75,16 @@ is anvl_decode('http://foo.bar.org/node%{
 
 use File::OM;
 
-my $om = File::OM::XML->new();
+my $om;
+
+$om = File::OM::ANVL->new();
+is $om->name_encode("a%b\ne\nf"), 'a%b%0ae%0af',
+	'anvl name encode with embedded newline';
+
+is $om->value_encode("a%b\ne\nf"), ' a%b%0ae%0af',
+	'anvl value encode with embedded newline';
+
+$om = File::OM::XML->new();
 is $om->name_encode('ab<cd>ef&"hi\'j'), 'ab&lt;cd&gt;ef&amp;\\"hi&apos;j',
 	'xml name encode';
 
