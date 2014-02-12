@@ -227,8 +227,8 @@ sub elem {	# OM::ANVL
 	# XXX would it look cooler with :\t after the label??
 		# xxx this should be stacked
 		$self->{element_name} = $self->name_encode($name);
-		my $enc_val = $self->value_encode($value);	# encoded value
 
+		my $enc_val = $self->value_encode($value);	# encoded value
 		$s .= $enc_val =~ /^\s*$/ ?		# wrap() loses label of
 			"$self->{element_name}:$enc_val" :	# blank value
 			&$wrapper(			# wrap lines; this 1st
@@ -298,6 +298,7 @@ sub anvl_rec {	# OM::ANVL
 	# XXX would it look cooler with :\t after the label??
 		# xxx this should be stacked
 		$self->{element_name} = $self->name_encode($name);
+
 		my $enc_val = $self->value_encode($value);	# encoded value
 		$s .= $enc_val =~ /^\s*$/ ?		# wrap() loses label of
 			"$self->{element_name}:$enc_val" :	# blank value
@@ -390,13 +391,12 @@ sub name_encode {	# OM::ANVL
 	#$s =~ s/^\s+//;
 	#$s =~ s/\s+$//;		# trim both ends
 	#$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
-	#$s =~ s/%/%%/g;		# to preserve literal %, double it
 # xxx what about granvl?
-				# yyy must be decoded by receiver
 	#$s =~ s/:/%3a/g;	# URL-encode all colons (%cn)
 
+	# remember to encode literal '%' so decoding by recipient preserves it
 	$s =~ s{		# URL-encode all colons and whitespace
-		([=:<\s])	# \s matches [ \t\n\f] etc.
+		([%=:<\s])	# \s matches [ \t\n\f] etc.
 	}{			# = and < anticipate ANVL extensions
 		sprintf("%%%02x", ord($1))	# replacement hex code
 	}xeg;
@@ -408,6 +408,8 @@ sub name_encode {	# OM::ANVL
 	$s =~ s/%20((?:%20)*)/ $1/g;
 	$s =~ s/^ /%20/;	# but make sure any initial space is encoded
 	$s =~ s/ $/%20/;	# and make sure any final space is encoded
+
+	$s =~ s/^#/%23/;	# make sure any comment character is encoded
 
 	return $s;
 
@@ -443,10 +445,9 @@ sub value_encode {	# OM::ANVL
 	#$s =~ s/^\s+//;
 	#$s =~ s/\s+$//;		# trim both ends
 
-	#$s =~ s/%/%%/g;		# to preserve literal %, double it
-	#			# yyy must be decoded by receiver
+	# remember to encode literal '%' so decoding by recipient preserves it
 	$s =~ s{		# URL-encode newlines in portable way
-		(\n)		# \n matches all platforms' ends of lines
+		([%\n])		# \n matches all platforms' ends of lines
 	}{			#
 		sprintf("%%%02x", ord($1))	# replacement hex code
 	}xeg;
@@ -1088,10 +1089,14 @@ sub name_encode {	# OM::PSV
 	#$s =~ s/^\s+//;
 	#$s =~ s/\s+$//;		# trim both ends
 	#$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
-	#$s =~ s/%/%%/g;		# to preserve literal %, double it
-	#			# yyy must be decoded by receiver
-	$s =~ s/\|/%7c/g;	# URL-encode all colons
-	$s =~ s/\n/%0a/g;	# URL-encode all newlines
+
+	#$s =~ s/\|/%7c/g;	# URL-encode all colons
+	#$s =~ s/\n/%0a/g;	# URL-encode all newlines
+	$s =~ s{		# URL-encode %, \n, |
+		([%\n|])	# \s matches [ \t\n\f] etc.
+	}{
+		sprintf("%%%02x", ord($1))	# replacement hex code
+	}xeg;
 
 	return $s;
 }
@@ -1105,10 +1110,14 @@ sub value_encode {	# OM::PSV
 	#$s =~ s/^\s+//;
 	#$s =~ s/\s+$//;		# trim both ends
 	#$s =~ s/\s+/ /g;	# squeeze multiple \s to one space
-	#$s =~ s/%/%%/g;		# to preserve literal %, double it
-	#			# yyy must be decoded by receiver
-	$s =~ s/\|/%7c/g;	# URL-encode all colons
-	$s =~ s/\n/%0a/g;	# URL-encode all newlines
+
+	#$s =~ s/\|/%7c/g;	# URL-encode all colons
+	#$s =~ s/\n/%0a/g;	# URL-encode all newlines
+	$s =~ s{		# URL-encode %, \n, |
+		([%\n|])	# \s matches [ \t\n\f] etc.
+	}{
+		sprintf("%%%02x", ord($1))	# replacement hex code
+	}xeg;
 
 	return $s;
 }

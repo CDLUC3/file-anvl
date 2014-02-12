@@ -78,10 +78,10 @@ use File::OM;
 my $om;
 
 $om = File::OM::ANVL->new();
-is $om->name_encode("a%b\ne\nf"), 'a%b%0ae%0af',
+is $om->name_encode("a%b\ne\nf"), 'a%25b%0ae%0af',
 	'anvl name encode with embedded newline';
 
-is $om->value_encode("a%b\ne\nf"), ' a%b%0ae%0af',
+is $om->value_encode("a%b\ne\nf"), ' a%25b%0ae%0af',
 	'anvl value encode with embedded newline';
 
 $om = File::OM::XML->new();

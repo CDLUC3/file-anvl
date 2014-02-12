@@ -115,6 +115,9 @@ like $om->elem('foo', 0), qr,foo: 0\n,, 'ANVL element of value 0';
 
 like $om->elem('foo', ""), qr,foo:\n,, 'ANVL element of value ""';
 
+like $om->elem('#foo', 'bar'), qr,^%23foo: bar\n,,
+	'ANVL comment char in name escaped';
+
 # xxxxxxxxx this doesn't work but should! (arg1 assumed to be format)
 #$om = File::OM::ANVL->new({wrap=>18});
 

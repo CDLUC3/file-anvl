@@ -1272,13 +1272,14 @@ to indicate a comment; if the latter, the element name has no defined
 meaning and the comment is contained in the value.  Here's example code
 that reads a 3-element record and reformats it.
 
-     ($msg = File::ANVL::anvl_recarray('
+     $msg = File::ANVL::anvl_recarray('
      a: b c
      d:  e
        f
      g:
        h i
-     '     and die "anvl_recarray: $msg";  # report what went wrong
+     ', \@elems)
+         and die "anvl_recarray: $msg";  # report what went wrong
      for ($i = 4; $i < $#elems; $i += 3)
          { print "[$elems[$i] <- $elems[$i+1]]  "; }
 
@@ -1310,9 +1311,11 @@ The C<anvl_arrayhash()> function takes the kind of element array
 resulting from a call to C<anvl_recarry> or C<erc_anvl_expand_array()>
 and modifies the hash reference given as the second argument by storing,
 for each element name, a list of integers corresponding to the triples
-that bear that name.  You should always C<undef>ine the hash first or you
-may see unexpected results.  So to print the value (the 2nd array element
-past the start of the triple) of the first instance (index 0) of "who",
+that bear that name.  This function returns the empty string on success,
+or a message beginning "warning: ..." or "error: ...".  You should always
+C<undef>ine the hash first or you may see unexpected results.  So to print
+the value (the 2nd array element past the start of the triple) of the
+first instance (index 0) of "who",
 
      anvl_arrayhash(\@elems, \%hash);
      print "First who: ", $elems[ $hash{who}->[0] + 2 ], "\n";
