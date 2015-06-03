@@ -109,6 +109,16 @@ is scalar(@{$svals[2]}), 1, '3rd subvalue cardinality correct';
 
 is scalar(@{$svals[3]}), 1, '4th subvalue cardinality correct';
 
+$r = 'todays_date: y
+comments:
+';
+$m = anvl_recarray($r, \@elems);
+is scalar(@elems), 9, 'correct elem count for record with non-standard start';
+
+my %rhash;
+$m = anvl_arrayhash(\@elems, \%rhash);
+like $m,  qr/xxx array/, 'empty final element';
+
 $r = 'Smith, Jo
 H: 555-1234
 W: 555-9876
@@ -122,7 +132,6 @@ is $elems[2], "Smith, Jo", 'unlabeled start captured (not really ANVL)';
 
 is $elems[0], "1", 'unlabeled start line number captured (not really ANVL)';
 
-my %rhash;
 $m = anvl_arrayhash(@elems, \%rhash);
 like $m,  qr/array/, 'bad first arg';
 
